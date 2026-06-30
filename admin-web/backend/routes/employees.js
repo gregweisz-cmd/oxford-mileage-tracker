@@ -272,6 +272,27 @@ router.post('/api/employees/sync-from-external/preview', requireAnyRole(['admin'
 }));
 
 /**
+ * Diagnose HR sync — search Appwarmer feed by name/email fragment.
+ * GET /api/employees/sync-from-external/diagnostics?q=smith
+ */
+router.get('/api/employees/sync-from-external/diagnostics', requireAnyRole(['admin']), asyncHandler(async (req, res) => {
+  try {
+    const q = String(req.query.q || req.query.query || '').trim();
+    const report = await externalEmployeeSync.diagnoseHrSync(q);
+    res.json(report);
+  } catch (err) {
+    if (err.message && err.message.includes('not configured')) {
+      return res.status(503).json({
+        error: err.message,
+        hint: 'Set EMPLOYEE_API_TOKEN or APPWARMER_EMPLOYEE_API_TOKEN in the environment.',
+      });
+    }
+    debugError('❌ HR sync diagnostics failed:', err);
+    res.status(500).json({ error: err.message || 'Diagnostics failed' });
+  }
+}));
+
+/**
  * Apply only approved HR sync changes.
  * POST /api/employees/sync-from-external/apply
  * Body: { toCreate: string[] (emails), toUpdate: string[] (emails), toArchive: string[] (ids) }

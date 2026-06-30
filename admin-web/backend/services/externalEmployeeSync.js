@@ -213,6 +213,250 @@ async function ensureCostCentersFromMappedEmployees(mappedList) {
 }
 
 /**
+ * Extract a usable email from an external HR record (Rippling / Appwarmer field name variants).
+ * @returns {string} lowercase email or empty string
+ */
+function extractEmailFromExternal(ext) {
+  if (!ext || typeof ext !== 'object') return '';
+  const candidates = [
+    ext.email,
+    ext.Email,
+    ext.mail,
+    ext.Mail,
+    ext.userName,
+    ext.UserName,
+    ext.workEmail,
+    ext.WorkEmail,
+    ext.work_email,
+    ext.primaryEmail,
+    ext.PrimaryEmail,
+    ext.personalEmail,
+    ext.PersonalEmail,
+    ext.emailAddress,
+    ext.EmailAddress,
+  ];
+  for (const raw of candidates) {
+    const email = String(raw || '').trim().toLowerCase();
+    if (email && email.includes('@')) return email;
+  }
+  return '';
+}
+
+/**
+ * Build display name from external record.
+ */
+function extractNameFromExternal(ext, email) {
+  if (!ext || typeof ext !== 'object') return '';
+  let name = (
+    ext.name ||
+    ext.Name ||
+    ext.fullName ||
+    ext.full_name ||
+    ext.displayName ||
+    ext.DisplayName ||
+    ''
+  )
+    .toString()
+    .trim();
+  if (!name) {
+    const first = (ext.firstName || ext.FirstName || ext.givenName || '').toString().trim();
+    const last = (ext.lastName || ext.LastName || ext.familyName || ext.surname || '').toString().trim();
+    name = `${first} ${last}`.trim();
+  }
+  if (!name) name = nameFromEmail(email);
+  if (!name) return '';
+  return formatNameForDisplay(name);
+}
+
+function externalPersonKey(ext) {
+  if (!ext || typeof ext !== 'object') return '';
+  const id = (ext.id || ext.Id || ext.employeeId || ext.employee_id || '').toString().trim();
+  if (id) return id;
+  const email = extractEmailFromExternal(ext);
+  if (email) return email;
+  const userName = (ext.userName || ext.UserName || '').toString().trim().toLowerCase();
+  return userName;
+}
+
+/**
+ * Explain why an external record would or would not import.
+ * @returns {{ importable: boolean, skipReason: string|null, mapped: object|null, email: string, name: string, personKey: string, rawFields: object }}
+ */
+function diagnoseExternalRecord(ext) {
+  const personKey = externalPersonKey(ext);
+  const email = extractEmailFromExternal(ext);
+  const name = extractNameFromExternal(ext, email);
+  const rawFields = {
+    id: ext?.id ?? ext?.Id ?? null,
+    userName: ext?.userName ?? ext?.UserName ?? null,
+    email: ext?.email ?? ext?.Email ?? null,
+    workEmail: ext?.workEmail ?? ext?.WorkEmail ?? null,
+    firstName: ext?.firstName ?? ext?.FirstName ?? null,
+    lastName: ext?.lastName ?? ext?.LastName ?? null,
+    employmentType: ext?.employmentType ?? ext?.EmploymentType ?? ext?.employeeType ?? null,
+    status: ext?.status ?? ext?.Status ?? ext?.employmentStatus ?? null,
+    costCenter: ext?.costCenter ?? ext?.CostCenter ?? ext?.department ?? ext?.Department ?? null,
+  };
+
+  if (!personKey) {
+    return {
+      importable: false,
+      skipReason: 'missing_id_and_email',
+      mapped: null,
+      email,
+      name,
+      personKey,
+      rawFields,
+    };
+  }
+  if (!email) {
+    return {
+      importable: false,
+      skipReason: 'missing_valid_email',
+      mapped: null,
+      email,
+      name,
+      personKey,
+      rawFields,
+    };
+  }
+  if (!name) {
+    return {
+      importable: false,
+      skipReason: 'missing_name',
+      mapped: null,
+      email,
+      name,
+      personKey,
+      rawFields,
+    };
+  }
+
+  const mapped = mapExternalToOur(ext);
+  return {
+    importable: !!mapped,
+    skipReason: mapped ? null : 'map_failed',
+    mapped,
+    email,
+    name,
+    personKey,
+    rawFields,
+  };
+}
+
+async function fetchRawExternalList() {
+  const token = getToken();
+  if (!token) {
+    throw new Error(
+      'External employee API not configured. Set EMPLOYEE_API_TOKEN or APPWARMER_EMPLOYEE_API_TOKEN in the environment.'
+    );
+  }
+  const res = await fetch(EXTERNAL_API_URL, {
+    method: 'GET',
+    headers: { token, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`External API returned ${res.status}: ${res.statusText}`);
+  const body = await res.json().catch(() => ({}));
+  return normalizeResponse(body);
+}
+
+/**
+ * Search HR feed and report import status (for troubleshooting missing employees).
+ * @param {string} [query] - optional name/email fragment (case-insensitive)
+ */
+async function diagnoseHrSync(query) {
+  const rawList = await fetchRawExternalList();
+  const q = String(query || '').trim().toLowerCase();
+
+  const skipped = [];
+  const importable = [];
+  const matches = [];
+
+  for (const ext of rawList) {
+    const diagnosis = diagnoseExternalRecord(ext);
+    const haystack = [
+      diagnosis.email,
+      diagnosis.name,
+      diagnosis.personKey,
+      JSON.stringify(diagnosis.rawFields),
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    if (diagnosis.importable && diagnosis.mapped) {
+      importable.push(diagnosis.mapped);
+    } else {
+      skipped.push({
+        skipReason: diagnosis.skipReason,
+        email: diagnosis.email,
+        name: diagnosis.name,
+        personKey: diagnosis.personKey,
+        rawFields: diagnosis.rawFields,
+      });
+    }
+
+    if (!q || haystack.includes(q)) {
+      matches.push({
+        importable: diagnosis.importable,
+        skipReason: diagnosis.skipReason,
+        email: diagnosis.email || diagnosis.mapped?.email || null,
+        name: diagnosis.name || diagnosis.mapped?.name || null,
+        personKey: diagnosis.personKey,
+        position: diagnosis.mapped?.position || ext?.position || ext?.title || null,
+        costCenters: diagnosis.mapped?.costCenters || sanitizeCostCenters(parseCostCenters(ext)),
+        rawFields: diagnosis.rawFields,
+      });
+    }
+  }
+
+  const mappedList = await fetchAndMapExternal();
+
+  let localStatus = null;
+  if (q && matches.length === 1 && matches[0].email) {
+    const existing = await getEmployeeByEmail(matches[0].email);
+    const archived = await new Promise((resolve, reject) => {
+      const db = dbService.getDb();
+      db.get(
+        'SELECT id, name, email, archived FROM employees WHERE LOWER(TRIM(email)) = ? ORDER BY archived ASC, createdAt ASC LIMIT 1',
+        [matches[0].email.toLowerCase().trim()],
+        (err, row) => (err ? reject(err) : resolve(row || null))
+      );
+    });
+    localStatus = existing
+      ? { id: existing.id, name: existing.name, email: existing.email, archived: false }
+      : archived
+        ? {
+            id: archived.id,
+            name: archived.name,
+            email: archived.email,
+            archived: archived.archived === 1,
+          }
+        : null;
+  }
+
+  return {
+    apiUrl: EXTERNAL_API_URL,
+    rawRecordCount: rawList.length,
+    importableCount: mappedList.length,
+    skippedCount: skipped.length,
+    skippedByReason: skipped.reduce((acc, row) => {
+      const key = row.skipReason || 'unknown';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {}),
+    query: q || null,
+    matchCount: q ? matches.length : null,
+    matches: q ? matches.slice(0, 25) : undefined,
+    localStatus,
+    notes: [
+      'We do not filter by full-time vs part-time — if someone is missing, they are usually absent from the Appwarmer API or lack a valid email.',
+      'HR sync is preview/apply: new employees appear under Creates and must be approved before import.',
+      'Check Rippling → Appwarmer sync if the person is not in rawRecordCount matches.',
+    ],
+  };
+}
+
+/**
  * Map one external record to our employee shape.
  * Tolerates: name, email, userName (Appwarmer), cost_center, cost_centers, position, phone, address, base_address, etc.
  * Includes externalId so we can use a stable employee ID and avoid duplicates.
@@ -221,21 +465,18 @@ async function ensureCostCentersFromMappedEmployees(mappedList) {
  */
 function mapExternalToOur(ext) {
   if (!ext || typeof ext !== 'object') return null;
-  const email = (ext.email || ext.Email || ext.mail || ext.userName || '').toString().trim().toLowerCase();
-  if (!email || !email.includes('@')) return null;
-  let name = (ext.name || ext.Name || ext.fullName || ext.full_name || ext.displayName || ext.DisplayName || '').toString().trim();
-  if (!name) name = nameFromEmail(email);
+  const email = extractEmailFromExternal(ext);
+  if (!email) return null;
+  const name = extractNameFromExternal(ext, email);
   if (!name) return null;
-  name = formatNameForDisplay(name);
 
   const costCenters = sanitizeCostCenters(parseCostCenters(ext));
 
-  const position = (ext.position || ext.Position || ext.title || ext.jobTitle || 'Staff').toString().trim() || 'Staff';
+  const position = (ext.position || ext.Position || ext.title || ext.jobTitle || ext.JobTitle || 'Staff').toString().trim() || 'Staff';
   const phoneNumber = (ext.phoneNumber || ext.phone || ext.Phone || ext.telephone || '').toString().trim() || '';
   const baseAddress = (ext.baseAddress || ext.base_address || ext.address || ext.Address || '').toString().trim() || '';
-  // Employee ID from API (id, Id, userName, employeeId, employee_id) – assign for everyone when present
   const externalId = (
-    ext.id || ext.Id || ext.userName || ext.employeeId || ext.employee_id || ''
+    ext.id || ext.Id || ext.employeeId || ext.employee_id || ext.userName || ext.UserName || ''
   ).toString().trim() || undefined;
   const oxfordHouseId = externalId || '';
 
@@ -451,14 +692,8 @@ async function fetchAndMapExternal() {
       'Use a .env file in the backend directory (admin-web/backend/.env), then restart the server.'
     );
   }
-  const res = await fetch(EXTERNAL_API_URL, {
-    method: 'GET',
-    headers: { token, Accept: 'application/json' },
-  });
-  if (!res.ok) throw new Error(`External API returned ${res.status}: ${res.statusText}`);
-  const body = await res.json().catch(() => ({}));
-  const rawList = normalizeResponse(body);
-  const personKey = (ext) => (ext.id || ext.Id || '').toString().trim() || (ext.userName || ext.email || ext.Email || '').toString().trim().toLowerCase();
+  const rawList = await fetchRawExternalList();
+  const personKey = externalPersonKey;
   const byPerson = new Map();
   for (const ext of rawList) {
     const k = personKey(ext);
@@ -906,6 +1141,8 @@ module.exports = {
   syncFromExternal,
   previewSyncFromExternal,
   applySyncFromExternal,
+  diagnoseHrSync,
+  diagnoseExternalRecord,
   normalizeResponse,
   mapExternalToOur,
   getEmployeeByEmail,
