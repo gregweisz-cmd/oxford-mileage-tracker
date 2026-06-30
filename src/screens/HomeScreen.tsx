@@ -125,6 +125,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   // Smart notifications state
   const [smartNotifications, setSmartNotifications] = useState<SmartNotification[]>([]);
   const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
+  const dismissedNotificationsRef = useRef<Set<string>>(new Set());
   
   // Generate dynamic styles based on theme (memoized — avoid recreating StyleSheet every render)
   const dynamicStyles = useMemo(() => StyleSheet.create({
@@ -695,7 +696,15 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   ) => {
     try {
       const notifications = await SmartNotificationService.checkNotifications(employeeId);
-      const dismissed = dismissedSet ?? dismissedNotifications;
+      let dismissed: Set<string>;
+      if (dismissedSet) {
+        dismissed = dismissedSet;
+      } else {
+        const stored = await loadDismissedNotificationIds(employeeId);
+        dismissed = new Set([...stored, ...dismissedNotificationsRef.current]);
+        dismissedNotificationsRef.current = dismissed;
+        setDismissedNotifications(dismissed);
+      }
       const activeNotifications = notifications.filter(
         notification => !dismissed.has(notification.id)
       );
@@ -732,11 +741,12 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
   };
 
   const handleDismissNotification = (notificationId: string) => {
-    const next = new Set(dismissedNotifications).add(notificationId);
+    const next = new Set(dismissedNotificationsRef.current).add(notificationId);
+    dismissedNotificationsRef.current = next;
     setDismissedNotifications(next);
     setSmartNotifications(prev => prev.filter(n => n.id !== notificationId));
     if (currentEmployee?.id) {
-      persistDismissedNotificationIds(currentEmployee.id, next);
+      void persistDismissedNotificationIds(currentEmployee.id, next);
     }
   };
 
@@ -818,6 +828,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       await loadEmployeeData(employee.id, employee, { localOnly: true });
 
       const loadedDismissed = await loadDismissedNotificationIds(employee.id);
+      dismissedNotificationsRef.current = loadedDismissed;
       setDismissedNotifications(loadedDismissed);
       void checkSmartNotifications(employee.id, loadedDismissed);
 
