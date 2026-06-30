@@ -7,6 +7,18 @@ export type FlockHouseWithDetails = FlockHouse & {
   house: OxfordHouse | null;
 };
 
+function flockHouseSortKey(entry: FlockHouseWithDetails): string {
+  return (entry.house?.name || entry.oxfordHouseId).trim().toLowerCase();
+}
+
+export function sortFlockHousesAlphabetically(
+  entries: FlockHouseWithDetails[]
+): FlockHouseWithDetails[] {
+  return [...entries].sort((a, b) =>
+    flockHouseSortKey(a).localeCompare(flockHouseSortKey(b), undefined, { sensitivity: 'base' })
+  );
+}
+
 export class FlockService {
   static async getFlockHouses(employeeId: string): Promise<FlockHouse[]> {
     return DatabaseService.getFlockHouses(employeeId);
@@ -19,7 +31,7 @@ export class FlockService {
       const house = await OxfordHouseService.getOxfordHouseById(entry.oxfordHouseId);
       withDetails.push({ ...entry, house });
     }
-    return withDetails;
+    return sortFlockHousesAlphabetically(withDetails);
   }
 
   static async isInFlock(employeeId: string, oxfordHouseId: string): Promise<boolean> {
@@ -31,41 +43,15 @@ export class FlockService {
     const existing = await this.isInFlock(employeeId, oxfordHouseId);
     if (existing) return null;
 
-    const flock = await this.getFlockHouses(employeeId);
-    const nextOrder =
-      flock.length > 0 ? Math.max(...flock.map((entry) => entry.sortOrder)) + 1 : 0;
-
     return DatabaseService.createFlockHouse({
       employeeId,
       oxfordHouseId,
-      sortOrder: nextOrder,
+      sortOrder: 0,
     });
   }
 
   static async removeFromFlock(id: string): Promise<void> {
     await DatabaseService.deleteFlockHouse(id);
-  }
-
-  static async moveFlockHouse(
-    employeeId: string,
-    id: string,
-    direction: 'up' | 'down'
-  ): Promise<void> {
-    const flock = await this.getFlockHouses(employeeId);
-    const index = flock.findIndex((entry) => entry.id === id);
-    if (index < 0) return;
-
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= flock.length) return;
-
-    const reordered = [...flock];
-    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
-
-    for (let i = 0; i < reordered.length; i++) {
-      if (reordered[i].sortOrder !== i) {
-        await DatabaseService.updateFlockHouse(reordered[i].id, { sortOrder: i });
-      }
-    }
   }
 
   static oxfordHouseToLocationDetails(house: OxfordHouse): LocationDetails {

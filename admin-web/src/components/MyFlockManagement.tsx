@@ -15,8 +15,6 @@ import {
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
-  ArrowUpward as ArrowUpwardIcon,
-  ArrowDownward as ArrowDownwardIcon,
   Add as AddIcon,
 } from '@mui/icons-material';
 import { debugError } from '../config/debug';
@@ -89,9 +87,7 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
       throw new Error(`Failed to load flock (${response.status})`);
     }
     const data = (await response.json()) as FlockHouseRow[];
-    setFlockRows(
-      [...(data || [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id.localeCompare(b.id))
-    );
+    setFlockRows(data || []);
   }, [employeeId]);
 
   const loadOxfordHouses = useCallback(async () => {
@@ -138,6 +134,14 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
 
   const flockHouseIds = useMemo(() => new Set(flockRows.map((row) => row.oxfordHouseId)), [flockRows]);
 
+  const sortedFlockRows = useMemo(() => {
+    return [...flockRows].sort((a, b) => {
+      const nameA = (houseById.get(a.oxfordHouseId)?.name || a.oxfordHouseId).toLowerCase();
+      const nameB = (houseById.get(b.oxfordHouseId)?.name || b.oxfordHouseId).toLowerCase();
+      return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+    });
+  }, [flockRows, houseById]);
+
   const housesInSelectedState = useMemo(() => {
     const notInFlock = oxfordHouses.filter((house) => !flockHouseIds.has(house.id));
     if (!selectedState) return notInFlock;
@@ -149,7 +153,7 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const pool = housesInSelectedState;
-    if (!q) return pool.slice(0, 12);
+    if (!q) return pool.slice(0, 12).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
     return pool
       .filter((house) => {
@@ -161,6 +165,7 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
           house.state.toLowerCase().includes(q)
         );
       })
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
       .slice(0, 12);
   }, [housesInSelectedState, searchQuery]);
 
@@ -180,7 +185,6 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
         const err = await response.text();
         throw new Error(err || `Add failed (${response.status})`);
       }
-      setSearchQuery('');
       await loadFlock();
     } catch (error) {
       debugError('MyFlockManagement: add failed', error);
@@ -208,36 +212,6 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
     } catch (error) {
       debugError('MyFlockManagement: remove failed', error);
       window.alert('Could not remove this house from My Flock.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleMove = async (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= flockRows.length) return;
-
-    const reordered = [...flockRows];
-    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
-
-    setSaving(true);
-    try {
-      for (let i = 0; i < reordered.length; i++) {
-        if (reordered[i].sortOrder === i) continue;
-        await fetch(`${API_BASE_URL}/api/flock-houses/${reordered[i].id}`, {
-          method: 'PUT',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            employeeId,
-            oxfordHouseId: reordered[i].oxfordHouseId,
-            sortOrder: i,
-          }),
-        });
-      }
-      await loadFlock();
-    } catch (error) {
-      debugError('MyFlockManagement: reorder failed', error);
-      window.alert('Could not reorder My Flock.');
     } finally {
       setSaving(false);
     }
@@ -332,37 +306,21 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
           </Typography>
         ) : (
           <List dense>
-            {flockRows.map((row, index) => {
+            {sortedFlockRows.map((row) => {
               const house = houseById.get(row.oxfordHouseId);
               return (
                 <ListItem
                   key={row.id}
                   sx={{ border: 1, borderColor: 'divider', borderRadius: 1, mb: 1 }}
                   secondaryAction={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <IconButton
-                        size="small"
-                        onClick={() => void handleMove(index, 'up')}
-                        disabled={saving || index === 0}
-                      >
-                        <ArrowUpwardIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => void handleMove(index, 'down')}
-                        disabled={saving || index === flockRows.length - 1}
-                      >
-                        <ArrowDownwardIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => void handleRemove(row)}
-                        disabled={saving}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => void handleRemove(row)}
+                      disabled={saving}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
                   }
                 >
                   <ListItemText

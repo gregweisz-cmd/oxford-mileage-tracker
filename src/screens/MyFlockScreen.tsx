@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { DatabaseService } from '../services/database';
 import { Employee, OxfordHouse } from '../types';
-import { FlockService, FlockHouseWithDetails } from '../services/flockService';
+import { FlockService, FlockHouseWithDetails, sortFlockHousesAlphabetically } from '../services/flockService';
 import { OxfordHouseService } from '../services/oxfordHouseService';
 import { ApiSyncService } from '../services/apiSyncService';
 import { searchTextInputProps } from '../utils/keyboardDismiss';
@@ -43,7 +43,6 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [addSearchQuery, setAddSearchQuery] = useState('');
-  const [addSearchResults, setAddSearchResults] = useState<OxfordHouse[]>([]);
   const [addSearchLoading, setAddSearchLoading] = useState(false);
   const [allOxfordHouses, setAllOxfordHouses] = useState<OxfordHouse[]>([]);
   const [addSelectedState, setAddSelectedState] = useState('');
@@ -109,13 +108,9 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
         currentEmployee?.baseAddress
       );
       setAddSelectedState(defaultSelection.selectedState);
-      setAddSearchResults(
-        filterOxfordHousesForPicker(houses, defaultSelection.selectedState, '')
-      );
     } catch (error) {
       console.error('Error loading Oxford Houses for flock:', error);
       setAllOxfordHouses([]);
-      setAddSearchResults([]);
     } finally {
       setAddSearchLoading(false);
     }
@@ -126,12 +121,17 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
     void loadOxfordHousesForAdd();
   }, [showAddModal, loadOxfordHousesForAdd]);
 
-  useEffect(() => {
-    if (!showAddModal || allOxfordHouses.length === 0) return;
-    setAddSearchResults(
-      filterOxfordHousesForPicker(allOxfordHouses, addSelectedState, addSearchQuery)
-    );
-  }, [addSearchQuery, addSelectedState, allOxfordHouses, showAddModal]);
+  const flockHouseIds = useMemo(
+    () => new Set(flockEntries.map((entry) => entry.oxfordHouseId)),
+    [flockEntries]
+  );
+
+  const addSearchResults = useMemo(() => {
+    if (!showAddModal || allOxfordHouses.length === 0) return [];
+    return filterOxfordHousesForPicker(allOxfordHouses, addSelectedState, addSearchQuery)
+      .filter((house) => !flockHouseIds.has(house.id))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }, [showAddModal, allOxfordHouses, addSelectedState, addSearchQuery, flockHouseIds]);
 
   const handleAddStateFilterChange = (state: string) => {
     setAddSelectedState(state);
@@ -159,27 +159,30 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
     ? OxfordHouseService.extractStateFromAddress(currentEmployee.baseAddress)
     : '';
 
-  const filteredEntries = flockEntries.filter((entry) => {
-    const house = entry.house;
-    if (!house) return false;
+  const filteredEntries = useMemo(() => {
+    const filtered = flockEntries.filter((entry) => {
+      const house = entry.house;
+      if (!house) return false;
 
-    if (defaultFlockState && !searchQuery.trim()) {
-      const inState =
-        OxfordHouseService.normalizeState(house.state) ===
-        OxfordHouseService.normalizeState(defaultFlockState);
-      if (!inState) return false;
-    }
+      if (defaultFlockState && !searchQuery.trim()) {
+        const inState =
+          OxfordHouseService.normalizeState(house.state) ===
+          OxfordHouseService.normalizeState(defaultFlockState);
+        if (!inState) return false;
+      }
 
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return true;
-    const address = OxfordHouseService.formatHouseAddress(house);
-    return (
-      house.name.toLowerCase().includes(q) ||
-      address.toLowerCase().includes(q) ||
-      house.city.toLowerCase().includes(q) ||
-      house.state.toLowerCase().includes(q)
-    );
-  });
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      const address = OxfordHouseService.formatHouseAddress(house);
+      return (
+        house.name.toLowerCase().includes(q) ||
+        address.toLowerCase().includes(q) ||
+        house.city.toLowerCase().includes(q) ||
+        house.state.toLowerCase().includes(q)
+      );
+    });
+    return sortFlockHousesAlphabetically(filtered);
+  }, [flockEntries, searchQuery, defaultFlockState]);
 
   const handleSelectHouse = (house: OxfordHouse) => {
     const details = FlockService.oxfordHouseToLocationDetails(house);
@@ -218,8 +221,6 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
     await refreshLocalFlock();
     const { SyncIntegrationService } = await import('../services/syncIntegrationService');
     void SyncIntegrationService.processSyncQueue();
-    Alert.alert('Added to Flock', `${house.name} is now in My Flock.`);
-    closeAddModal();
   };
 
   const handleRemoveFromFlock = (entry: FlockHouseWithDetails) => {
@@ -244,15 +245,7 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
     ]);
   };
 
-  const handleMove = async (entry: FlockHouseWithDetails, direction: 'up' | 'down') => {
-    if (!currentEmployee) return;
-    await FlockService.moveFlockHouse(currentEmployee.id, entry.id, direction);
-    await refreshLocalFlock();
-    const { SyncIntegrationService } = await import('../services/syncIntegrationService');
-    void SyncIntegrationService.processSyncQueue();
-  };
-
-  const renderFlockItem = ({ item, index }: { item: FlockHouseWithDetails; index: number }) => {
+  const renderFlockItem = ({ item }: { item: FlockHouseWithDetails }) => {
     const house = item.house;
     if (!house) {
       return (
@@ -290,30 +283,10 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
             </TouchableOpacity>
           ) : null}
           {!isPickerMode ? (
-            <>
-              <TouchableOpacity
-                style={styles.reorderButton}
-                onPress={() => void handleMove(item, 'up')}
-                disabled={index === 0}
-              >
-                <MaterialIcons name="arrow-upward" size={18} color={index === 0 ? '#ccc' : '#2196F3'} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.reorderButton}
-                onPress={() => void handleMove(item, 'down')}
-                disabled={index === filteredEntries.length - 1}
-              >
-                <MaterialIcons
-                  name="arrow-downward"
-                  size={18}
-                  color={index === filteredEntries.length - 1 ? '#ccc' : '#2196F3'}
-                />
-              </TouchableOpacity>
-            </>
+            <TouchableOpacity onPress={() => handleRemoveFromFlock(item)}>
+              <MaterialIcons name="delete" size={22} color="#f44336" />
+            </TouchableOpacity>
           ) : null}
-          <TouchableOpacity onPress={() => handleRemoveFromFlock(item)}>
-            <MaterialIcons name="delete" size={22} color="#f44336" />
-          </TouchableOpacity>
         </View>
       </View>
     );
@@ -415,7 +388,7 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
               data={addSearchResults}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
-                <TouchableOpacity style={styles.addResultRow} onPress={() => void handleAddToFlock(item)}>
+                <View style={styles.addResultRow}>
                   <MaterialCommunityIcons name="sheep" size={22} color="#7CB342" />
                   <View style={styles.addResultText}>
                     <Text style={styles.addressName}>{item.name}</Text>
@@ -423,8 +396,13 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
                       {OxfordHouseService.formatHouseAddress(item)}
                     </Text>
                   </View>
-                  <MaterialIcons name="add-circle" size={24} color="#2196F3" />
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => void handleAddToFlock(item)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialIcons name="add-circle" size={24} color="#2196F3" />
+                  </TouchableOpacity>
+                </View>
               )}
               keyboardShouldPersistTaps="handled"
               ListEmptyComponent={
@@ -528,7 +506,6 @@ const styles = StyleSheet.create({
   addressActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   selectButton: { flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 4 },
   selectButtonText: { color: '#4CAF50', fontWeight: '600', fontSize: 13 },
-  reorderButton: { padding: 4 },
   emptyState: { alignItems: 'center', paddingTop: 48, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 18, fontWeight: '600', color: '#666', marginTop: 12 },
   emptySubtitle: { fontSize: 14, color: '#999', textAlign: 'center', marginTop: 8, lineHeight: 20 },
