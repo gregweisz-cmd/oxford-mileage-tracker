@@ -60,7 +60,7 @@ const corsOptions = {
   allowedHeaders: ALLOWED_CORS_HEADERS,
   exposedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 };
 
 /**
@@ -80,7 +80,7 @@ function handlePreflight(req, res) {
   } else {
     res.header('Access-Control-Allow-Origin', '*');
   }
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', ALLOWED_CORS_HEADERS.join(', '));
   res.header('Access-Control-Allow-Credentials', 'true');
   res.sendStatus(200);
