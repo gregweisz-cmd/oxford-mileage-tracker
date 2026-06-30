@@ -420,7 +420,7 @@ async function diagnoseHrSync(query) {
       oxfordHouseId: hrMatch.personKey,
       externalId: hrMatch.personKey,
     };
-    const { employee: existing } = await findExistingEmployeeForHrRecord(mappedForLookup);
+    const { employee: existing } = await findExistingEmployeeForHrRecord(mappedForLookup, importable);
     const archived = existing
       ? null
       : await new Promise((resolve, reject) => {
@@ -550,6 +550,33 @@ function emailsLikelyTypoVariant(a, b) {
   return mismatches <= 1;
 }
 
+/** First segment of the email local part (e.g. jacklyn.feliciano -> jacklyn). */
+function emailGivenNameToken(email) {
+  const local = String(email || '').split('@')[0].toLowerCase().trim();
+  if (!local) return '';
+  return local.split(/[._-]+/)[0] || '';
+}
+
+/**
+ * True when two work emails are on the same domain and share the same given-name
+ * token (e.g. jacklyn.feliciano vs jacklyn.sledge after a legal name change).
+ */
+function emailsShareGivenName(a, b) {
+  const ea = String(a || '').trim().toLowerCase();
+  const eb = String(b || '').trim().toLowerCase();
+  if (!ea || !eb) return false;
+  if (ea === eb) return true;
+  if (emailDomain(ea) !== emailDomain(eb)) return false;
+  const ga = emailGivenNameToken(ea);
+  const gb = emailGivenNameToken(eb);
+  return ga.length >= 2 && ga === gb;
+}
+
+function countMappedByNormalizedName(mappedList, normalizedName) {
+  if (!normalizedName) return 0;
+  return (mappedList || []).filter((mapped) => normalizePersonName(mapped.name) === normalizedName).length;
+}
+
 /**
  * Build lookup sets from the HR feed for archive / presence checks.
  */
@@ -567,7 +594,7 @@ function buildHrIdentitySets(mappedList) {
 
 /**
  * Whether a local employee row corresponds to someone still in the HR feed.
- * Matches by email, HR employee id, or same name + likely email typo.
+ * Matches by email, HR employee id, likely email typo, or same name + shared given-name email.
  */
 function isEmployeeInHrFeed(employee, mappedList, identitySets) {
   const email = String(employee?.email || '').trim().toLowerCase();
@@ -577,11 +604,14 @@ function isEmployeeInHrFeed(employee, mappedList, identitySets) {
   const localName = normalizePersonName(employee?.name);
   if (!localName || !email) return false;
   let typoMatches = 0;
+  let givenNameMatches = 0;
   for (const mapped of mappedList || []) {
     if (normalizePersonName(mapped.name) !== localName) continue;
     if (emailsLikelyTypoVariant(email, mapped.email)) typoMatches++;
+    if (emailsShareGivenName(email, mapped.email)) givenNameMatches++;
   }
-  return typoMatches === 1;
+  if (typoMatches === 1) return true;
+  return givenNameMatches === 1 && countMappedByNormalizedName(mappedList, localName) === 1;
 }
 
 /**
@@ -623,9 +653,9 @@ function getEmployeeByOxfordHouseId(oxfordHouseId) {
 /**
  * Find a local employee that corresponds to an HR record when email alone does not match
  * (e.g. admin corrected stevin@ to steven@).
- * @returns {Promise<{ employee: object|null, matchedBy: 'email'|'oxfordHouseId'|'emailTypo'|null }>}
+ * @returns {Promise<{ employee: object|null, matchedBy: 'email'|'oxfordHouseId'|'emailTypo'|'nameAndGivenEmail'|null }>}
  */
-async function findExistingEmployeeForHrRecord(mapped) {
+async function findExistingEmployeeForHrRecord(mapped, mappedList = null) {
   const byEmail = await getEmployeeByEmail(mapped.email);
   if (byEmail) {
     return { employee: byEmail, matchedBy: 'email' };
@@ -656,6 +686,12 @@ async function findExistingEmployeeForHrRecord(mapped) {
     );
     if (typoMatches.length === 1) {
       return { employee: typoMatches[0], matchedBy: 'emailTypo' };
+    }
+
+    const nameMatches = rows.filter((row) => normalizePersonName(row.name) === normalizedName);
+    const hrNameCount = mappedList ? countMappedByNormalizedName(mappedList, normalizedName) : 1;
+    if (nameMatches.length === 1 && hrNameCount === 1 && emailsShareGivenName(nameMatches[0].email, mapped.email)) {
+      return { employee: nameMatches[0], matchedBy: 'nameAndGivenEmail' };
     }
   }
 
@@ -955,7 +991,7 @@ async function previewSyncFromExternal() {
   const creates = [];
   const updates = [];
   for (const mapped of mappedList) {
-    const { employee: existing, matchedBy } = await findExistingEmployeeForHrRecord(mapped);
+    const { employee: existing, matchedBy } = await findExistingEmployeeForHrRecord(mapped, mappedList);
     const prevCC = existing && existing.costCenters
       ? (typeof existing.costCenters === 'string' ? JSON.parse(existing.costCenters || '[]') : existing.costCenters)
       : [];
@@ -1154,7 +1190,7 @@ async function applySyncFromExternal(body) {
   const updateSet = new Set(toUpdate);
   for (const mapped of mappedList) {
     const emailKey = mapped.email.toLowerCase().trim();
-    const { employee: existing } = await findExistingEmployeeForHrRecord(mapped);
+    const { employee: existing } = await findExistingEmployeeForHrRecord(mapped, mappedList);
     if (!existing && createSet.has(emailKey)) {
       try {
         await upsertOne(mapped, null);
@@ -1243,7 +1279,7 @@ async function syncFromExternal() {
 
   for (const mapped of mappedList) {
     try {
-      const { employee: existing } = await findExistingEmployeeForHrRecord(mapped);
+      const { employee: existing } = await findExistingEmployeeForHrRecord(mapped, mappedList);
       const result = await upsertOne(mapped, existing);
       stats.synced++;
       if (result.created) stats.created++;
@@ -1312,6 +1348,7 @@ module.exports = {
   getEmployeeByOxfordHouseId,
   findExistingEmployeeForHrRecord,
   emailsLikelyTypoVariant,
+  emailsShareGivenName,
   isEmployeeInHrFeed,
   dedupeAllByEmail,
 };

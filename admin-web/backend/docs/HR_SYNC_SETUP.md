@@ -33,6 +33,8 @@ The "Sync from HR API" button in Admin Portal → Employee Management calls `htt
 
 **Local corrections:** If you fix an employee’s email spelling in Admin (e.g. `steven@` instead of HR’s `stevin@`), sync matches by HR Employee ID (`oxfordHouseId`) or a likely one-character email typo on the same name, so the corrected record is updated—not archived—and HR’s misspelled email is not imported as a duplicate.
 
+**Name changes:** If HR updates an employee’s email after a legal name change (e.g. `jacklyn.feliciano@` → `jacklyn.sledge@`) but the display name is unchanged, sync links the records when the full name matches uniquely and both emails share the same given-name prefix (`jacklyn`). The existing local record is kept; HR’s new email is not imported as a second person.
+
 ## Render (production)
 
 1. Open your Render dashboard and select the backend service (e.g. Oxford Mileage Backend).

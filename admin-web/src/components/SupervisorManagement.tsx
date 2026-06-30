@@ -49,6 +49,53 @@ import {
 } from '../utils/staffDesignations';
 import { EmployeeApiService } from '../services/employeeApiService';
 
+function parseEmployeeCostCenters(emp: Employee): string[] {
+  const raw = emp.selectedCostCenters?.length ? emp.selectedCostCenters : emp.costCenters;
+  if (Array.isArray(raw)) return raw.map((cc) => String(cc || '').trim()).filter(Boolean);
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((cc) => String(cc || '').trim()).filter(Boolean);
+      }
+    } catch {
+      const trimmed = raw.trim();
+      return trimmed ? [trimmed] : [];
+    }
+  }
+  return [];
+}
+
+function stateFromCostCenterCode(code: string): string {
+  const part = String(code || '').split('.')[0]?.trim().toUpperCase() ?? '';
+  return /^[A-Z]{2}$/.test(part) ? part : '';
+}
+
+function getEmployeeStateAndCostCenters(emp: Employee): { state: string; costCenters: string[] } {
+  const costCenters = parseEmployeeCostCenters(emp);
+  const primary = String(emp.defaultCostCenter || costCenters[0] || '').trim();
+  let state = stateFromCostCenterCode(primary);
+  if (!state) {
+    for (const cc of costCenters) {
+      state = stateFromCostCenterCode(cc);
+      if (state) break;
+    }
+  }
+  if (!state && emp.baseAddress) {
+    const match = emp.baseAddress.match(/,\s*([A-Z]{2})(?:\s+\d{5}(?:-\d{4})?)?/i);
+    if (match) state = match[1].toUpperCase();
+  }
+  return { state, costCenters };
+}
+
+function formatStaffAssignmentSecondary(emp: Employee): string {
+  const { state, costCenters } = getEmployeeStateAndCostCenters(emp);
+  const parts: string[] = [];
+  if (state) parts.push(state);
+  if (costCenters.length > 0) parts.push(costCenters.join(', '));
+  return parts.join(' · ');
+}
+
 interface SupervisorManagementProps {
   employees: Employee[];
   onUpdateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
@@ -495,7 +542,15 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
       const name = (opt.name ?? '').toLowerCase();
       const position = (opt.position ?? '').toLowerCase();
       const email = (opt.email ?? '').toLowerCase();
-      return name.includes(q) || position.includes(q) || email.includes(q);
+      const { state, costCenters } = getEmployeeStateAndCostCenters(opt);
+      const costCenterHaystack = costCenters.join(' ').toLowerCase();
+      return (
+        name.includes(q) ||
+        position.includes(q) ||
+        email.includes(q) ||
+        state.toLowerCase().includes(q) ||
+        costCenterHaystack.includes(q)
+      );
     });
   }, [assignableStaffUnique, assignStaffSearchInput]);
 
@@ -705,7 +760,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
             <TextField
               fullWidth
               label="Search staff"
-              placeholder="Type name, position, or email..."
+              placeholder="Type name, position, email, state, or cost center..."
               value={assignStaffSearchInput}
               onChange={(e) => setAssignStaffSearchInput(e.target.value)}
               size="small"
@@ -730,6 +785,7 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
               ) : (
                 assignStaffOptions.map((emp) => {
                   const isSelected = selectedStaff.some((s) => s.id === emp.id);
+                  const assignmentContext = formatStaffAssignmentSecondary(emp);
                   return (
                     <ListItemButton
                       key={emp.id}
@@ -744,7 +800,9 @@ export const SupervisorManagement: React.FC<SupervisorManagementProps> = ({
                       <Checkbox checked={isSelected} size="small" sx={{ mr: 1 }} />
                       <ListItemText
                         primary={`${formatNameForDisplay(emp.name)} - ${getDisplayPosition(emp.position)}`}
+                        secondary={assignmentContext || undefined}
                         primaryTypographyProps={{ variant: 'body2' }}
+                        secondaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
                       />
                     </ListItemButton>
                   );
