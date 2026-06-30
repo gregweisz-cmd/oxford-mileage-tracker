@@ -3020,9 +3020,12 @@ export class DatabaseService {
     const now = new Date().toISOString();
     const database = await getDatabase();
     
-    // Store date as YYYY-MM-DD to match backend and avoid timezone/strftime issues
-    const dateObj = tracking.date instanceof Date ? tracking.date : new Date(tracking.date);
-    const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+    // Store date as YYYY-MM-DD to match backend and avoid timezone/strftime issues.
+    // parseDateSafe treats a YYYY-MM-DD string as noon-local so the calendar day
+    // survives the round-trip (new Date("YYYY-MM-DD") would parse as UTC midnight
+    // and shift back a day in negative-UTC timezones).
+    const dateObj = this.parseDateSafe(tracking.date as Date | string);
+    const dateStr = this.toLocalDateKey(dateObj);
 
     await database.runAsync(
       'INSERT INTO time_tracking (id, employeeId, date, category, hours, description, costCenter, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -3088,7 +3091,10 @@ export class DatabaseService {
     
     return result.map((row: any) => ({
       ...row,
-      date: new Date(row.date),
+      // Timezone-safe: treat stored YYYY-MM-DD as noon-local so the calendar day
+      // is preserved when the sync push later re-serializes it (new Date() would
+      // parse as UTC midnight and shift back a day, compounding on every sync).
+      date: this.parseDateSafe(row.date),
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
     }));
@@ -3103,7 +3109,7 @@ export class DatabaseService {
     return {
       id: result.id,
       employeeId: result.employeeId,
-      date: new Date(result.date),
+      date: this.parseDateSafe(result.date),
       category: result.category,
       hours: result.hours,
       description: result.description,
@@ -3125,7 +3131,9 @@ export class DatabaseService {
 
     if (updates.date !== undefined) {
       fields.push('date = ?');
-      values.push(updates.date.toISOString());
+      // Store YYYY-MM-DD (local) — never UTC ISO. toISOString() on a local-midnight
+      // Date shifts the calendar day in negative-UTC timezones and corrupts the row.
+      values.push(this.toLocalDateKey(this.parseDateSafe(updates.date as Date | string)));
     }
 
     if (updates.category !== undefined) {
@@ -3176,7 +3184,7 @@ export class DatabaseService {
     return result.map((row: any) => ({
       id: row.id,
       employeeId: row.employeeId,
-      date: new Date(row.date),
+      date: this.parseDateSafe(row.date),
       category: row.category,
       hours: row.hours,
       description: row.description,
