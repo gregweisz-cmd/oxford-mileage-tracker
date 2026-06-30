@@ -12,6 +12,10 @@ const distanceService = require('../services/distanceService');
 const googleMapsService = require('../services/googleMapsService');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { formatBaseAddressForStorage } = require('../utils/baseAddressNormalizer');
+const {
+  normalizeOxfordHouseList,
+  resolveOxfordHouseByStoredId,
+} = require('../utils/oxfordHouseIds');
 const { requireAuth, requireAnyRole } = require('../middleware/auth');
 
 // ===== DISTANCE (Google Maps - Calculate miles) =====
@@ -285,7 +289,7 @@ router.delete('/api/saved-addresses/:id', requireAuth, (req, res) => {
 
 // ===== MY FLOCK (pinned Oxford Houses) =====
 
-router.get('/api/flock-houses', requireAuth, (req, res) => {
+router.get('/api/flock-houses', requireAuth, async (req, res) => {
   const db = dbService.getDb();
   const { employeeId } = req.query;
 
@@ -294,18 +298,28 @@ router.get('/api/flock-houses', requireAuth, (req, res) => {
     return;
   }
 
-  db.all(
-    'SELECT * FROM flock_houses WHERE employeeId = ? ORDER BY sortOrder ASC, createdAt ASC',
-    [employeeId],
-    (err, rows) => {
-      if (err) {
-        debugError('❌ Error fetching flock houses:', err);
-        res.status(500).json({ error: err.message });
-        return;
+  try {
+    const houses = await getOxfordHousesNormalized();
+    db.all(
+      'SELECT * FROM flock_houses WHERE employeeId = ? ORDER BY sortOrder ASC, createdAt ASC',
+      [employeeId],
+      (err, rows) => {
+        if (err) {
+          debugError('❌ Error fetching flock houses:', err);
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        const enriched = (rows || []).map((row) => ({
+          ...row,
+          house: resolveOxfordHouseByStoredId(row.oxfordHouseId, houses),
+        }));
+        res.json(enriched);
       }
-      res.json(rows || []);
-    }
-  );
+    );
+  } catch (error) {
+    debugError('❌ Error enriching flock houses:', error);
+    res.status(500).json({ error: 'Failed to fetch flock houses' });
+  }
 });
 
 router.post('/api/flock-houses', requireAuth, (req, res) => {
@@ -476,30 +490,29 @@ async function fetchOxfordHouses() {
     }
     
     debugLog(`✅ Fetched ${houses.length} Oxford Houses`);
-    return houses;
+    return normalizeOxfordHouseList(houses);
   } catch (error) {
     debugError('❌ Error fetching Oxford Houses:', error);
     return [];
   }
 }
 
+async function getOxfordHousesNormalized() {
+  if (oxfordHousesCache && oxfordHousesCacheTime && (Date.now() - oxfordHousesCacheTime < OXFORD_HOUSES_CACHE_TTL)) {
+    return oxfordHousesCache;
+  }
+
+  const houses = await fetchOxfordHouses();
+  oxfordHousesCache = houses;
+  oxfordHousesCacheTime = Date.now();
+  return houses;
+}
+
 // Get all Oxford Houses (with caching)
 router.get('/api/oxford-houses', async (req, res) => {
   try {
-    // Check if cache is valid
-    if (oxfordHousesCache && oxfordHousesCacheTime && (Date.now() - oxfordHousesCacheTime < OXFORD_HOUSES_CACHE_TTL)) {
-      debugLog('📦 Serving Oxford Houses from cache');
-      res.json(oxfordHousesCache);
-      return;
-    }
-    
-    // Fetch fresh data
-    const houses = await fetchOxfordHouses();
-    
-    // Update cache
-    oxfordHousesCache = houses;
-    oxfordHousesCacheTime = Date.now();
-    
+    const houses = await getOxfordHousesNormalized();
+    debugLog(houses.length ? '📦 Serving Oxford Houses from cache or fresh fetch' : '⚠️ No Oxford Houses available');
     res.json(houses);
   } catch (error) {
     debugError('❌ Error in oxford-houses endpoint:', error);
@@ -511,11 +524,9 @@ router.get('/api/oxford-houses', async (req, res) => {
 router.post('/api/oxford-houses/refresh', requireAnyRole(['admin']), async (req, res) => {
   try {
     debugLog('🔄 Force refreshing Oxford Houses data...');
-    const houses = await fetchOxfordHouses();
-    
-    // Update cache
-    oxfordHousesCache = houses;
-    oxfordHousesCacheTime = Date.now();
+    oxfordHousesCache = null;
+    oxfordHousesCacheTime = null;
+    const houses = await getOxfordHousesNormalized();
     
     res.json({ message: 'Oxford Houses refreshed successfully', count: houses.length });
   } catch (error) {

@@ -1,6 +1,10 @@
 import { Platform } from 'react-native';
 import { OxfordHouse } from '../types';
 import { DatabaseService } from './database';
+import {
+  normalizeOxfordHouseRecord,
+  resolveOxfordHouseByStoredId,
+} from '../utils/oxfordHouseId';
 import { API_BASE_URL } from '../config/api';
 
 export class OxfordHouseService {
@@ -411,18 +415,14 @@ export class OxfordHouseService {
       
       const data = await response.json();
       
-      // Convert API data to OxfordHouse format
-      this.cachedHouses = data.map((house: any, index: number) => ({
-        id: house.id || `oh_${index}`,
-        name: house.name,
-        address: house.address,
-        city: house.city,
-        state: this.normalizeState(house.state),
-        zipCode: house.zip,
-        phoneNumber: house.phoneNumber || '',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }));
+      // Convert API data to OxfordHouse format with stable ids
+      this.cachedHouses = data.map((house: any, index: number) => {
+        const normalized = normalizeOxfordHouseRecord(house, index);
+        return {
+          ...normalized,
+          state: this.normalizeState(normalized.state),
+        };
+      });
       
       this.cacheTimestamp = Date.now();
       
@@ -525,7 +525,7 @@ export class OxfordHouseService {
 
   static async getOxfordHouseById(id: string): Promise<OxfordHouse | null> {
     const houses = await this.getAllOxfordHouses();
-    return houses.find(house => house.id === id) || null;
+    return resolveOxfordHouseByStoredId(id, houses);
   }
 
   static formatHouseDisplay(house: OxfordHouse): string {

@@ -18,6 +18,11 @@ import {
   Add as AddIcon,
 } from '@mui/icons-material';
 import { debugError } from '../config/debug';
+import {
+  normalizeOxfordHouseList,
+  resolveOxfordHouseByStoredId,
+  type OxfordHouseLike,
+} from '../utils/oxfordHouseId';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
@@ -26,6 +31,7 @@ interface FlockHouseRow {
   employeeId: string;
   oxfordHouseId: string;
   sortOrder: number;
+  house?: OxfordHouseRow | null;
 }
 
 interface OxfordHouseRow {
@@ -35,6 +41,7 @@ interface OxfordHouseRow {
   city: string;
   state: string;
   zipCode: string;
+  zip?: string;
   phoneNumber?: string;
 }
 
@@ -66,7 +73,23 @@ function getAuthHeaders(): HeadersInit {
 }
 
 function formatHouseAddress(house: OxfordHouseRow): string {
-  return `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`.trim();
+  const zip = house.zipCode || house.zip || '';
+  return `${house.address}, ${house.city}, ${house.state} ${zip}`.trim();
+}
+
+function resolveFlockHouse(row: FlockHouseRow, houses: OxfordHouseRow[]): OxfordHouseRow | null {
+  if (row.house?.name) {
+    return {
+      ...row.house,
+      zipCode: row.house.zipCode || row.house.zip || '',
+    };
+  }
+  const resolved = resolveOxfordHouseByStoredId(row.oxfordHouseId, houses as OxfordHouseLike[]);
+  if (!resolved) return null;
+  return {
+    ...resolved,
+    zipCode: resolved.zipCode || resolved.zip || '',
+  };
 }
 
 const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseAddress = '' }) => {
@@ -95,11 +118,12 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
     if (!response.ok) {
       throw new Error(`Failed to load Oxford Houses (${response.status})`);
     }
-    const data = (await response.json()) as OxfordHouseRow[];
-    setOxfordHouses(data || []);
+    const data = (await response.json()) as Record<string, unknown>[];
+    const houses = normalizeOxfordHouseList(data) as OxfordHouseRow[];
+    setOxfordHouses(houses);
 
     const states = Array.from(
-      new Set((data || []).map((house) => normalizeState(house.state)).filter(Boolean))
+      new Set(houses.map((house) => normalizeState(house.state)).filter(Boolean))
     ).sort();
     setAvailableStates(states);
 
@@ -128,19 +152,29 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
 
   const houseById = useMemo(() => {
     const map = new Map<string, OxfordHouseRow>();
-    oxfordHouses.forEach((house) => map.set(house.id, house));
+    oxfordHouses.forEach((house, index) => {
+      map.set(house.id, house);
+      map.set(`oh_${index}`, house);
+    });
     return map;
   }, [oxfordHouses]);
+
+  const resolvedFlockRows = useMemo(() => {
+    return flockRows.map((row) => ({
+      ...row,
+      resolvedHouse: resolveFlockHouse(row, oxfordHouses),
+    }));
+  }, [flockRows, oxfordHouses]);
 
   const flockHouseIds = useMemo(() => new Set(flockRows.map((row) => row.oxfordHouseId)), [flockRows]);
 
   const sortedFlockRows = useMemo(() => {
-    return [...flockRows].sort((a, b) => {
-      const nameA = (houseById.get(a.oxfordHouseId)?.name || a.oxfordHouseId).toLowerCase();
-      const nameB = (houseById.get(b.oxfordHouseId)?.name || b.oxfordHouseId).toLowerCase();
+    return [...resolvedFlockRows].sort((a, b) => {
+      const nameA = (a.resolvedHouse?.name || a.oxfordHouseId).toLowerCase();
+      const nameB = (b.resolvedHouse?.name || b.oxfordHouseId).toLowerCase();
       return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
     });
-  }, [flockRows, houseById]);
+  }, [resolvedFlockRows]);
 
   const housesInSelectedState = useMemo(() => {
     const notInFlock = oxfordHouses.filter((house) => !flockHouseIds.has(house.id));
@@ -194,9 +228,8 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
     }
   };
 
-  const handleRemove = async (row: FlockHouseRow) => {
-    const house = houseById.get(row.oxfordHouseId);
-    const label = house?.name || 'this house';
+  const handleRemove = async (row: FlockHouseRow & { resolvedHouse?: OxfordHouseRow | null }) => {
+    const label = row.resolvedHouse?.name || houseById.get(row.oxfordHouseId)?.name || 'this house';
     if (!window.confirm(`Remove "${label}" from My Flock?`)) return;
 
     setSaving(true);
@@ -307,7 +340,7 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
         ) : (
           <List dense>
             {sortedFlockRows.map((row) => {
-              const house = houseById.get(row.oxfordHouseId);
+              const house = row.resolvedHouse || houseById.get(row.oxfordHouseId) || null;
               return (
                 <ListItem
                   key={row.id}
@@ -327,10 +360,14 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <span role="img" aria-label="sheep">🐑</span>
-                        <span>{house?.name || `House ${row.oxfordHouseId}`}</span>
+                        <span>{house?.name || 'Oxford House'}</span>
                       </Box>
                     }
-                    secondary={house ? formatHouseAddress(house) : 'Oxford House record not found'}
+                    secondary={
+                      house
+                        ? formatHouseAddress(house)
+                        : `Could not match house record (${row.oxfordHouseId})`
+                    }
                   />
                 </ListItem>
               );
