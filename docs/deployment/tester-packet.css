@@ -177,3 +177,21 @@ p.screenshot-missing {
   margin: 8pt 0;
   background: #fafafa;
 }
+
+/* TEST_SCENARIOS.pdf — each main section (h2) starts on its own page */
+body.test-scenarios-packet h2:not(:first-of-type) {
+  page-break-before: always;
+  break-before: page;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+body.test-scenarios-packet h2 {
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+body.test-scenarios-packet h3 {
+  page-break-after: avoid;
+  break-after: avoid;
+}

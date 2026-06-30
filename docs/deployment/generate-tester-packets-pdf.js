@@ -24,7 +24,12 @@ function loadCss() {
 
 const combinedCss = loadCss();
 
-const files = ['ALPHA_TESTER_PACKET.md', 'BETA_TESTER_PACKET.md', 'BETA_TESTER_ONE_PAGER.md'];
+const files = [
+  'ALPHA_TESTER_PACKET.md',
+  'BETA_TESTER_PACKET.md',
+  'BETA_TESTER_ONE_PAGER.md',
+  'TEST_SCENARIOS.md',
+];
 
 /**
  * Inline local images as data URIs so Puppeteer setContent() can render them.
@@ -58,7 +63,9 @@ function embedLocalImages(html, baseDir) {
 
 async function convertOne(mdPath, outPath) {
   const md = fs.readFileSync(mdPath, 'utf8');
-  const title = path.basename(mdPath, '.md').replace(/_/g, ' ');
+  const baseName = path.basename(mdPath, '.md');
+  const title = baseName.replace(/_/g, ' ');
+  const bodyClass = baseName === 'TEST_SCENARIOS' ? ' class="test-scenarios-packet"' : '';
   let bodyHtml = marked.parse(md);
   bodyHtml = embedLocalImages(bodyHtml, dir);
   const html = `<!DOCTYPE html>
@@ -68,7 +75,7 @@ async function convertOne(mdPath, outPath) {
   <title>${title}</title>
   <style>${combinedCss}</style>
 </head>
-<body>
+<body${bodyClass}>
 ${bodyHtml}
 </body>
 </html>`;
