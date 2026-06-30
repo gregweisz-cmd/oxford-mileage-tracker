@@ -259,7 +259,12 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
     }
 
     return (
-      <View style={styles.addressCard}>
+      <TouchableOpacity
+        style={styles.addressCard}
+        onPress={isPickerMode ? () => handleSelectHouse(house) : undefined}
+        activeOpacity={isPickerMode ? 0.7 : 1}
+        disabled={!isPickerMode}
+      >
         <View style={styles.addressInfo}>
           <View style={styles.titleRow}>
             <MaterialCommunityIcons name="sheep" size={22} color="#7CB342" />
@@ -272,15 +277,12 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
         </View>
         <View style={styles.addressActions}>
           {isPickerMode ? (
-            <TouchableOpacity
-              style={styles.selectButton}
-              onPress={() => handleSelectHouse(house)}
-            >
+            <View style={styles.selectButton}>
               <MaterialIcons name="check-circle" size={20} color="#4CAF50" />
               <Text style={styles.selectButtonText}>
                 {fromGpsTrackingEnd ? 'Use as end' : 'Select'}
               </Text>
-            </TouchableOpacity>
+            </View>
           ) : null}
           {!isPickerMode ? (
             <TouchableOpacity onPress={() => handleRemoveFromFlock(item)}>
@@ -288,7 +290,7 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
             </TouchableOpacity>
           ) : null}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 

@@ -33,6 +33,7 @@ import {
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { debugLog, debugError } from '../config/debug';
+import { getStaffPortalAuthHeaders } from '../services/staffPortalAuthHeaders';
 import { makeCanonicalLocationSelection } from '../utils/locationSelection';
 
 // API configuration - use environment variable or default to localhost for development
@@ -85,6 +86,13 @@ interface OxfordHouse {
   zip: string;
 }
 
+interface FlockHouseOption {
+  id: string;
+  oxfordHouseId: string;
+  name: string;
+  address: string;
+}
+
 const AddressSelector: React.FC<AddressSelectorProps> = ({
   open,
   onClose,
@@ -102,6 +110,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const [selectedState, setSelectedState] = useState<string>('');
   const [availableStates, setAvailableStates] = useState<string[]>([]);
   const [recentAddresses, setRecentAddresses] = useState<Array<{ address: string; name?: string }>>([]);
+  const [flockHouses, setFlockHouses] = useState<FlockHouseOption[]>([]);
 
   const RECENT_STORAGE_KEY = `recentAddresses_${employeeId}`;
   const SAVED_STORAGE_KEY = `savedAddresses_${employeeId}`;
@@ -139,7 +148,8 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
       // Load other addresses in parallel
       await Promise.all([
         loadSavedAddresses(),
-        loadFrequentAddresses()
+        loadFrequentAddresses(),
+        loadFlockHouses(),
       ]);
     } catch (error) {
       debugError('Error loading employee data:', error);
@@ -353,6 +363,38 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
       loadEmployeeData();
     }
   }, [open, employeeId, loadEmployeeData]);
+
+  const loadFlockHouses = async () => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/flock-houses?employeeId=${encodeURIComponent(employeeId)}`,
+        { headers: getStaffPortalAuthHeaders() }
+      );
+      if (!response.ok) return;
+
+      const rows = await response.json();
+      const houses = (rows || [])
+        .map((row: { id: string; oxfordHouseId: string; house?: OxfordHouse & { zipCode?: string } }) => {
+          const house = row.house;
+          if (!house?.name) return null;
+          const zip = house.zip || house.zipCode || '';
+          const address = `${house.address}, ${house.city}, ${house.state} ${zip}`.trim();
+          return {
+            id: row.id,
+            oxfordHouseId: row.oxfordHouseId,
+            name: house.name,
+            address,
+          } as FlockHouseOption;
+        })
+        .filter(Boolean) as FlockHouseOption[];
+
+      houses.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      setFlockHouses(houses);
+    } catch (error) {
+      debugError('Error loading flock houses:', error);
+      setFlockHouses([]);
+    }
+  };
 
   const loadOxfordHouses = async (baseAddress: string = '') => {
     try {
@@ -611,6 +653,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         >
           <Tab icon={<HomeIcon />} label="Base Address" />
           <Tab icon={<BookmarkIcon />} label="Saved" />
+          <Tab label="My Flock" />
           <Tab icon={<LocationIcon />} label="Frequent" />
           <Tab icon={<BusinessIcon />} label="Oxford Houses" />
           <Tab icon={<HistoryIcon />} label="Recent" />
@@ -697,8 +740,35 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
           )}
         </TabPanel>
 
-        {/* Frequent Addresses Tab */}
+        {/* My Flock Tab */}
         <TabPanel value={activeTab} index={2}>
+          {flockHouses.length === 0 ? (
+            <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
+              Your flock is empty. Add Oxford Houses in User Settings → Manage My Flock.
+            </Typography>
+          ) : (
+            <List sx={{ maxHeight: 400, overflow: 'auto' }}>
+              {flockHouses.map((house) => (
+                <ListItem key={house.id} disablePadding>
+                  <ListItemButton
+                    onClick={() =>
+                      handleSelectAddress(house.address, {
+                        name: house.name,
+                        source: 'flock',
+                        sourceId: house.oxfordHouseId,
+                      })
+                    }
+                  >
+                    <ListItemText primary={house.name} secondary={house.address} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </TabPanel>
+
+        {/* Frequent Addresses Tab */}
+        <TabPanel value={activeTab} index={3}>
           {frequentAddresses.length === 0 ? (
             <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
               No frequent addresses found
@@ -759,7 +829,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         </TabPanel>
 
         {/* Oxford Houses Tab */}
-        <TabPanel value={activeTab} index={3}>
+        <TabPanel value={activeTab} index={4}>
           <TextField
             fullWidth
             placeholder="Search Oxford Houses..."
@@ -841,8 +911,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
           )}
         </TabPanel>
 
-        {/* Recent Tab - Last 15 addresses used by this user (manual entry is done in the form fields) */}
-        <TabPanel value={activeTab} index={4}>
+        <TabPanel value={activeTab} index={5}>
           {recentAddresses.length === 0 ? (
             <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
               No recent addresses. Select an address from another tab or type in the form; it will appear here next time.

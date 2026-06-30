@@ -263,6 +263,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   const isTrackingRef = useRef(isTracking);
   isTrackingRef.current = isTracking;
   const lastAppliedEndFromFavoritesRef = useRef<string | null>(null);
+  const awaitingEndLocationPickerRef = useRef(false);
   const openEndLocationOptionsRef = useRef<() => void>(() => {});
 
   const canonicalBaseAddress = useMemo(
@@ -1284,22 +1285,30 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   useFocusEffect(
     React.useCallback(() => {
       const pending = consumePendingGpsLocationPick();
-      if (!pending || !currentEmployee) return;
+      if (pending && currentEmployee) {
+        awaitingEndLocationPickerRef.current = false;
 
-      if (pending.kind === 'start' && !isTrackingRef.current) {
-        if (!trackingFormRef.current.purpose.trim()) {
-          Alert.alert('Missing Information', 'Please enter purpose before selecting a location.');
+        if (pending.kind === 'start' && !isTrackingRef.current) {
+          if (!trackingFormRef.current.purpose.trim()) {
+            Alert.alert('Missing Information', 'Please enter purpose before selecting a location.');
+            return;
+          }
+          void startGpsTrackingRef.current(pending.address);
           return;
         }
-        void startGpsTrackingRef.current(pending.address);
+
+        if (pending.kind === 'end' && isTrackingRef.current && currentSession?.id) {
+          const dedupeKey = `${currentSession.id}|${pending.address.name}|${pending.address.address}`;
+          if (lastAppliedEndFromFavoritesRef.current === dedupeKey) return;
+          lastAppliedEndFromFavoritesRef.current = dedupeKey;
+          openEndLocationModalWithDetailsRef.current(pending.address);
+        }
         return;
       }
 
-      if (pending.kind === 'end' && isTrackingRef.current && currentSession?.id) {
-        const dedupeKey = `${currentSession.id}|${pending.address.name}|${pending.address.address}`;
-        if (lastAppliedEndFromFavoritesRef.current === dedupeKey) return;
-        lastAppliedEndFromFavoritesRef.current = dedupeKey;
-        openEndLocationModalWithDetailsRef.current(pending.address);
+      if (awaitingEndLocationPickerRef.current && isTrackingRef.current) {
+        awaitingEndLocationPickerRef.current = false;
+        openEndLocationOptionsRef.current();
       }
     }, [currentEmployee, currentSession?.id])
   );
@@ -1359,9 +1368,13 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         if (suggested) {
           openEndLocationModalWithDetails(suggested.details);
         } else {
+          awaitingEndLocationPickerRef.current = true;
+          endTripFlow.hideChoosingForPicker();
           navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
         }
       } else if (option === 'myFlock') {
+        awaitingEndLocationPickerRef.current = true;
+        endTripFlow.hideChoosingForPicker();
         navigation.navigate('MyFlock', { fromGpsTrackingEnd: true });
       } else if (option === 'oxfordHouse') {
         const suggested = endLocationSuggestions.oxfordHouse;

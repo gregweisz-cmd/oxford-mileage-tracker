@@ -21,6 +21,7 @@ export interface UseEndTripFlowResult {
   endTripFlowPendingRef: React.MutableRefObject<boolean>;
   endFlowOpenedThisFocusRef: React.MutableRefObject<boolean>;
   openChoosing: () => void;
+  hideChoosingForPicker: () => void;
   openCapture: (details: Partial<LocationDetails> | null) => void;
   /** Reset end-trip UI. No-op while saving. */
   dismissEndTrip: () => void;
@@ -47,6 +48,11 @@ export function useEndTripFlow(options: UseEndTripFlowOptions): UseEndTripFlowRe
   const openChoosing = useCallback(() => {
     setCaptureInitial(null);
     setPhase('choosing');
+  }, []);
+
+  /** Hide the choose-end modal while navigating to a location picker screen. */
+  const hideChoosingForPicker = useCallback(() => {
+    setPhase('idle');
   }, []);
 
   const openCapture = useCallback((details: Partial<LocationDetails> | null) => {
@@ -94,6 +100,7 @@ export function useEndTripFlow(options: UseEndTripFlowOptions): UseEndTripFlowRe
       endTripFlowPendingRef,
       endFlowOpenedThisFocusRef,
       openChoosing,
+      hideChoosingForPicker,
       openCapture,
       dismissEndTrip,
       beginSaving,
@@ -104,6 +111,7 @@ export function useEndTripFlow(options: UseEndTripFlowOptions): UseEndTripFlowRe
       phase,
       captureInitial,
       openChoosing,
+      hideChoosingForPicker,
       openCapture,
       dismissEndTrip,
       beginSaving,

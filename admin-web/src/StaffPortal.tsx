@@ -6288,6 +6288,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // report is actually with reviewers. A weekly check-up submission leaves the monthly
   // report in draft/needs_revision, where only "Accept check-up" should be available.
   const showApprovalActions = supervisorMode && isPendingApprovalStatus(reportStatus);
+  const showRevisionAction = supervisorMode;
 
   return (
     <Container ref={reportScopeRef} maxWidth="xl" sx={{ mt: 2, mb: 4 }} id="expense-report-content">
@@ -6318,7 +6319,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         acceptWeeklyCheckupDisabled={loading || !canAcceptWeeklyCheckup}
         acceptWeeklyCheckupTooltip={acceptWeeklyCheckupTooltip}
         onApproveReport={showApprovalActions ? onApproveReport : undefined}
-        onRequestRevision={showApprovalActions ? onRequestRevision : undefined}
+        onRequestRevision={showRevisionAction ? onRequestRevision : undefined}
         onViewAllReports={fetchAllReports}
         onStartFreshReport={
           currentMonth === new Date().getMonth() + 1 &&

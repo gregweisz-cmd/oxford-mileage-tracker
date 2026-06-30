@@ -253,7 +253,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       }
       
       // Check if maps are enabled (handle both boolean true and integer 1 from database)
-      const enabled = !!costCenter?.enableGoogleMaps;
+      const enabled = !!(costCenter?.enableGoogleMaps === true || Number(costCenter?.enableGoogleMaps) === 1);
       if (enabled) {
         debugLog(`🗺️ hasMapsEnabled: Found enabled cost center: ${ccName} -> ${costCenter?.name} (code: ${costCenter?.code})`);
       } else if (costCenter) {
@@ -724,11 +724,12 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
       
       // Check if maps are enabled for this report
       const mapsEnabled = hasMapsEnabled(report);
+      const effectiveViewMode = viewMode ?? (mapsEnabled ? 'day' : undefined);
       
       // Build URL with map view mode if maps are enabled and mode is specified
       let exportUrl = `/api/export/expense-report-pdf/${report.id}`;
-      if (mapsEnabled && viewMode && viewMode !== 'none') {
-        exportUrl += `?mapViewMode=${viewMode}`;
+      if (mapsEnabled && effectiveViewMode && effectiveViewMode !== 'none') {
+        exportUrl += `?mapViewMode=${effectiveViewMode}`;
       }
 
       const response = await apiFetch(exportUrl);
@@ -1281,10 +1282,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ financeUserId, fin
                     size="small"
                     color="success"
                     disabled={pdfExportLoadingReportId === report.id}
-                    onClick={() => {
-                      const mapsEnabled = hasMapsEnabled(report);
-                      handleExportToExcel(report, mapsEnabled ? 'day' : undefined);
-                    }}
+                    onClick={() => handleExportToExcel(report)}
                     title="Export to PDF"
                   >
                     <DownloadIcon />

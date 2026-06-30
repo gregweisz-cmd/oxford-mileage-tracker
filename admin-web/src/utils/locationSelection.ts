@@ -9,6 +9,7 @@ export type LocationSource =
   | 'manual'
   | 'recent'
   | 'frequent'
+  | 'flock'
   | 'lastDestination'
   | 'tripStart'
   | 'google';
@@ -21,6 +22,7 @@ export const LOCATION_SOURCE_ORDER: LocationSource[] = [
   'manual',
   'recent',
   'frequent',
+  'flock',
   'lastDestination',
   'tripStart',
   'google',

@@ -436,47 +436,11 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
   const db = dbService.getDb();
   const { id } = req.params;
   const { mapViewMode } = req.query; // 'day' or 'costCenter'
+  const authenticatedRole = req.authenticatedEmployee?.role || req.auth?.role;
   
-  debugLog(`📊 Exporting expense report to PDF: ${id}, mapViewMode: ${mapViewMode || 'none'}`);
+  debugLog(`📊 Exporting expense report to PDF: ${id}, mapViewMode: ${mapViewMode || 'none'}, role: ${authenticatedRole || 'unknown'}`);
   
-  // Helper function to check if user is finance team
-  const isFinanceUser = async () => {
-    try {
-      const authHeader = req.headers.authorization;
-      const token = authHeader?.replace('Bearer ', '') || req.query.token;
-      
-      debugLog(`🔐 Checking finance user - token present: ${!!token}, header: ${!!authHeader}`);
-      
-      if (!token) {
-        debugLog('🔐 No token found in request');
-        return false;
-      }
-      
-      const employeeId = token.split('_')[1];
-      if (!employeeId) {
-        debugLog('🔐 Could not extract employee ID from token');
-        return false;
-      }
-      
-      debugLog(`🔐 Checking employee ID: ${employeeId}`);
-      
-      return new Promise((resolve) => {
-        db.get('SELECT role FROM employees WHERE id = ?', [employeeId], (err, employee) => {
-          if (err || !employee) {
-            debugLog(`🔐 Employee not found or error: ${err?.message || 'not found'}`);
-            resolve(false);
-            return;
-          }
-          const isFinance = employee.role === 'finance' || employee.role === 'admin';
-          debugLog(`🔐 Employee role: ${employee.role}, isFinance: ${isFinance}`);
-          resolve(isFinance);
-        });
-      });
-    } catch (error) {
-      debugError('Error checking finance user:', error);
-      return false;
-    }
-  };
+  const isFinanceUser = () => authenticatedRole === 'finance' || authenticatedRole === 'admin';
   
   // Helper function to check if cost center has Google Maps enabled.
   // Uses resilient matching (name/code/contains) so aliases like
@@ -2726,15 +2690,16 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             // Generate Google Maps if enabled and user is finance
             (async () => {
               try {
-                const userIsFinance = await isFinanceUser();
+                const userIsFinance = isFinanceUser();
                 const mapsEnabled = await isCostCenterMapsEnabled(costCenter);
                 const apiConfigured = googleMapsService.isConfigured();
+                const effectiveMapViewMode = mapViewMode || (userIsFinance && mapsEnabled ? 'day' : null);
                 
                 debugLog(`🗺️ Map generation check for ${costCenter}:`);
                 debugLog(`   - User is finance: ${userIsFinance}`);
                 debugLog(`   - Maps enabled for cost center: ${mapsEnabled}`);
                 debugLog(`   - API configured: ${apiConfigured}`);
-                debugLog(`   - Map view mode: ${mapViewMode || 'none'}`);
+                debugLog(`   - Map view mode: ${effectiveMapViewMode || 'none'}`);
                 debugLog(`   - Mileage entries count: ${mileageEntries?.length || 0}`);
                 
                 if (!userIsFinance) {
@@ -2746,14 +2711,14 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 } else if (!apiConfigured) {
                   debugLog(`⚠️ Maps skipped: Google Maps API key not configured`);
                   console.warn('Maps skipped: Google Maps API key not configured');
-                } else if (!mapViewMode) {
+                } else if (!effectiveMapViewMode) {
                   debugLog(`⚠️ Maps skipped: No map view mode specified`);
                   console.warn('Maps skipped: No map view mode specified');
                 }
                 
-                if (userIsFinance && mapsEnabled && apiConfigured && mapViewMode) {
-                  debugLog(`🗺️ Generating Google Maps for cost center: ${costCenter}, mode: ${mapViewMode}`);
-                  console.log(`Generating Google Maps for cost center: ${costCenter}, mode: ${mapViewMode}`);
+                if (userIsFinance && mapsEnabled && apiConfigured && effectiveMapViewMode) {
+                  debugLog(`🗺️ Generating Google Maps for cost center: ${costCenter}, mode: ${effectiveMapViewMode}`);
+                  console.log(`Generating Google Maps for cost center: ${costCenter}, mode: ${effectiveMapViewMode}`);
                   // Log sample of mileage entry map data for debugging (no PII beyond addresses)
                   if (mileageEntries && mileageEntries.length > 0) {
                     const sample = mileageEntries[0];
@@ -2773,7 +2738,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                   }
                   
                   // mapViewMode: 'day' = one map per trip, grouped by calendar day; 'costCenter' = one map per trip for the whole CC (chronological)
-                  if (mapViewMode === 'costCenter') {
+                  if (effectiveMapViewMode === 'costCenter') {
                     let biasLatLng = null;
                     if (baseAddress) {
                       biasLatLng = await googleMapsService.geocodeToLatLng(baseAddress);
@@ -2876,7 +2841,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
 
                     onComplete();
                     return;
-                  } else if (mapViewMode === 'day') {
+                  } else if (effectiveMapViewMode === 'day') {
                     // Day mode: one map per trip (one page per mileage entry), zoomed to that route
                     const entriesByDate = {};
                     mileageEntries.forEach(entry => {
@@ -2992,7 +2957,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                     onComplete();
                     return;
                   } else {
-                    debugLog(`⚠️ mapViewMode "${mapViewMode}" is not "costCenter" or "day"; skipping maps`);
+                    debugLog(`⚠️ mapViewMode "${effectiveMapViewMode}" is not "costCenter" or "day"; skipping maps`);
                   }
                 } else {
                   debugLog(`⚠️ Map generation conditions not met for ${costCenter}`);
