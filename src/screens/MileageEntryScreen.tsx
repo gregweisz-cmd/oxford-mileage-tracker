@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
@@ -56,6 +56,7 @@ interface MileageEntryScreenProps {
 }
 
 export default function MileageEntryScreen({ navigation, route }: MileageEntryScreenProps) {
+  const insets = useSafeAreaInsets();
   const [formData, setFormData] = useState({
     date: new Date(),
     odometerReading: '',
@@ -1666,10 +1667,16 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
         visible={showLocationOptionsModal}
         transparent={true}
         animationType="slide"
+        presentationStyle="overFullScreen"
         onRequestClose={() => setShowLocationOptionsModal(false)}
       >
         <View style={styles.locationOptionsModalOverlay}>
-          <SafeAreaView style={styles.locationOptionsModalContent} edges={['top', 'bottom']}>
+          <View
+            style={[
+              styles.locationOptionsModalContent,
+              { paddingTop: Math.max(insets.top, 12) + 8 },
+            ]}
+          >
             <Text style={styles.locationOptionsModalTitle}>
               Choose {currentLocationType === 'start' ? 'Starting' : 'Ending'} Location
             </Text>
@@ -1677,7 +1684,15 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
               Where are you {currentLocationType === 'start' ? 'starting' : 'ending'} your trip?
             </Text>
 
-            <View style={styles.locationOptionsContainer}>
+            <ScrollView
+              style={styles.locationOptionsScroll}
+              contentContainerStyle={[
+                styles.locationOptionsScrollContent,
+                { paddingBottom: Math.max(insets.bottom, 12) + 16 },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator
+            >
             <TouchableOpacity
               style={[styles.locationOptionButton, !lastDestination && styles.disabledButton]}
               onPress={() => handleLocationOption('lastDestination')}
@@ -1727,7 +1742,7 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             >
               <MaterialCommunityIcons name="sheep" size={24} color="#7CB342" />
               <View style={styles.locationOptionText}>
-                <Text style={styles.locationOptionTitle}>My Flock</Text>
+                <Text style={styles.locationOptionTitle}>Choose from My Flock</Text>
                 <Text style={styles.locationOptionSubtitle}>Quick pick from Oxford Houses in your flock</Text>
               </View>
             </TouchableOpacity>
@@ -1760,8 +1775,8 @@ export default function MileageEntryScreen({ navigation, route }: MileageEntrySc
             >
               <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
             </TouchableOpacity>
-            </View>
-          </SafeAreaView>
+            </ScrollView>
+          </View>
         </View>
       </Modal>
 
@@ -2510,8 +2525,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 24,
+  },
+  locationOptionsScroll: {
+    flex: 1,
+    marginTop: 8,
+  },
+  locationOptionsScrollContent: {
+    flexGrow: 1,
+    paddingTop: 8,
   },
   locationOptionsModalTitle: {
     fontSize: 22,
@@ -2524,12 +2545,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 24,
-  },
-  locationOptionsContainer: {
-    flex: 1,
-    width: '100%',
-    justifyContent: 'space-evenly',
+    marginBottom: 8,
   },
   modalSubtitle: {
     fontSize: 14,
@@ -2538,7 +2554,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   locationOptionButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,

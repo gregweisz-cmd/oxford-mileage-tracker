@@ -81,6 +81,28 @@ const DEFAULT_PREFERENCES: UserPreferences = {
 
 const STORAGE_KEY = '@oxford_user_preferences';
 
+/** Keep saved order but insert any new options at their default positions. */
+export function mergeLocationOptionOrder<T extends string>(
+  saved: string[] | undefined,
+  defaults: readonly T[]
+): T[] {
+  const valid = new Set<string>(defaults);
+  const order = (saved || []).filter((option): option is T => valid.has(option));
+  if (order.length === 0) return [...defaults];
+
+  for (const option of defaults) {
+    if (order.includes(option)) continue;
+    const defaultIdx = defaults.indexOf(option);
+    const insertBefore = order.find((existing) => defaults.indexOf(existing) > defaultIdx);
+    if (insertBefore !== undefined) {
+      order.splice(order.indexOf(insertBefore), 0, option);
+    } else {
+      order.push(option);
+    }
+  }
+  return order;
+}
+
 export class PreferencesService {
   private static cachedPreferences: UserPreferences | null = null;
 
@@ -100,7 +122,16 @@ export class PreferencesService {
       if (stored) {
         const preferences = JSON.parse(stored);
         // Merge with defaults to ensure new preferences exist
-        this.cachedPreferences = { ...DEFAULT_PREFERENCES, ...preferences };
+        const merged = { ...DEFAULT_PREFERENCES, ...preferences };
+        merged.gpsStartLocationOptionOrder = mergeLocationOptionOrder(
+          merged.gpsStartLocationOptionOrder,
+          DEFAULT_PREFERENCES.gpsStartLocationOptionOrder
+        );
+        merged.gpsEndLocationOptionOrder = mergeLocationOptionOrder(
+          merged.gpsEndLocationOptionOrder,
+          DEFAULT_PREFERENCES.gpsEndLocationOptionOrder
+        );
+        this.cachedPreferences = merged;
         return this.cachedPreferences as UserPreferences;
       }
 

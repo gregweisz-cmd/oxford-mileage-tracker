@@ -2158,7 +2158,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   option === 'lastDestination' ? 'Start from Last Destination' :
                   option === 'baseAddress' ? 'Start from Base Address' :
                   option === 'favoriteAddresses' ? 'Choose from Favorite Addresses' :
-                  option === 'myFlock' ? 'My Flock' :
+                  option === 'myFlock' ? 'Choose from My Flock' :
                   option === 'oxfordHouse' ? 'Search Oxford Houses' : 'Enter New Starting Point';
                 const subtitle =
                   suggestion
@@ -2305,7 +2305,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   option === 'baseAddress' ? 'End at Base Address' :
                   option === 'tripStart' ? 'Same as Trip Start' :
                   option === 'favoriteAddresses' ? 'Choose from Favorite Addresses' :
-                  option === 'myFlock' ? 'My Flock' :
+                  option === 'myFlock' ? 'Choose from My Flock' :
                   option === 'oxfordHouse' ? 'Search Oxford Houses' : 'Enter Destination Manually';
                 const subtitle =
                   suggestion
