@@ -10,6 +10,7 @@
 const dbService = require('./dbService');
 const helpers = require('../utils/helpers');
 const constants = require('../utils/constants');
+const { canServeAsSeniorStaffApprover } = require('../utils/seniorStaffAssignment');
 
 /**
  * Initialize approval workflow for a report.
@@ -28,7 +29,10 @@ async function initializeApprovalWorkflow(report, reportDataOverride = null) {
   const employee = await dbService.getEmployeeById(report.employeeId);
   let seniorStaff = null;
   if (employee && employee.seniorStaffId) {
-    seniorStaff = await dbService.getEmployeeById(employee.seniorStaffId);
+    const candidate = await dbService.getEmployeeById(employee.seniorStaffId);
+    if (canServeAsSeniorStaffApprover(candidate, employee)) {
+      seniorStaff = candidate;
+    }
   }
   let supervisor = null;
   if (employee && employee.supervisorId) {

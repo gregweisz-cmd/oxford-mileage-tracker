@@ -43,6 +43,7 @@ interface GroupResponse {
 
 interface SupervisorTeamManagementTabProps {
   supervisorId: string;
+  supervisorName: string;
   /** Called after group changes so parent can refresh its team list (e.g. Reports tab). */
   onGroupChanged?: () => void;
 }
@@ -53,6 +54,7 @@ function memberDisplayName(m: Pick<GroupMember, 'name' | 'preferredName'>): stri
 
 const SupervisorTeamManagementTab: React.FC<SupervisorTeamManagementTabProps> = ({
   supervisorId,
+  supervisorName,
   onGroupChanged,
 }) => {
   const { showSuccess, showError, showInfo } = useToast();
@@ -109,12 +111,37 @@ const SupervisorTeamManagementTab: React.FC<SupervisorTeamManagementTabProps> = 
 
   const hasUnsavedAssignments = assignmentChanges.length > 0;
 
+  const seniorStaffNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of seniorStaffOptions) {
+      map.set(s.id, formatNameForDisplay(s.preferredName?.trim() || s.name));
+    }
+    return map;
+  }, [seniorStaffOptions]);
+
+  const approvalChainForMember = useCallback(
+    (member: GroupMember): string => {
+      const supervisorLabel = `${formatNameForDisplay(supervisorName)} (Supervisor)`;
+      if (member.isSeniorStaff) {
+        return `${memberDisplayName(member)} (Senior Staff) → ${supervisorLabel} → Finance`;
+      }
+      const assignId = draftAssignments[member.id] ?? null;
+      if (assignId) {
+        const seniorLabel = seniorStaffNameById.get(assignId) || 'Senior Staff';
+        return `${memberDisplayName(member)} → ${seniorLabel} (Senior Staff) → ${supervisorLabel} → Finance`;
+      }
+      return `${memberDisplayName(member)} → ${supervisorLabel} → Finance`;
+    },
+    [draftAssignments, seniorStaffNameById, supervisorName]
+  );
+
   const handleToggleSeniorStaff = async (member: GroupMember, next: boolean) => {
     if (!next) {
       const dependents = members.filter((m) => m.seniorStaffId === member.id);
+      const dependentNames = dependents.map((d) => memberDisplayName(d)).join(', ');
       const msg =
         dependents.length > 0
-          ? `${memberDisplayName(member)} will no longer be Senior Staff. ${dependents.length} team member(s) who report to them will be unassigned, and any reports waiting on them will be re-routed. Continue?`
+          ? `${memberDisplayName(member)} will no longer be Senior Staff.\n\nThese team members report to them and will be unassigned: ${dependentNames}.\n\nAny reports waiting on ${memberDisplayName(member)} will be re-routed to you or the next approver.\n\nContinue?`
           : `${memberDisplayName(member)} will no longer be Senior Staff. Continue?`;
       if (!window.confirm(msg)) return;
     }
@@ -260,6 +287,7 @@ const SupervisorTeamManagementTab: React.FC<SupervisorTeamManagementTabProps> = 
                 <TableCell>Position</TableCell>
                 <TableCell align="center">Senior Staff</TableCell>
                 <TableCell>Reports to (Senior Staff)</TableCell>
+                <TableCell>Approval chain</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -327,6 +355,11 @@ const SupervisorTeamManagementTab: React.FC<SupervisorTeamManagementTabProps> = 
                           </Select>
                         </FormControl>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', maxWidth: 280 }}>
+                        {approvalChainForMember(member)}
+                      </Typography>
                     </TableCell>
                   </TableRow>
                 );

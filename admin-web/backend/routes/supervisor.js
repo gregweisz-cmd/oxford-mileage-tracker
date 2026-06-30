@@ -8,12 +8,15 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const websocketService = require('../services/websocketService');
-const notificationService = require('../services/notificationService');
 const helpers = require('../utils/helpers');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { requireAuth, getEffectiveRole } = require('../middleware/auth');
 const { logAuditEvent } = require('../services/auditLogService');
-const { initializeApprovalWorkflow, statusForStage } = require('../services/approvalWorkflow');
+const {
+  rerouteInFlightSeniorStaffReports,
+  repairAfterSeniorStaffUnavailable,
+  repairInvalidSeniorStaffAssignmentForEmployee,
+} = require('../services/seniorStaffRepairService');
 const {
   hasSeniorStaffDesignation,
   hasSupervisorDesignation,
@@ -718,61 +721,10 @@ function authorizeSupervisorScope(req, res) {
 }
 
 /**
- * Re-route any of an employee's in-flight reports that are waiting at the senior-staff stage,
- * after their senior-staff assignment changed. The senior-staff step is the first approval and
- * has not been approved yet, so rebuilding the workflow from the (now-updated) employee record is
- * safe: it re-points to the new senior staff, or advances to the supervisor stage when cleared.
- * Returns the number of reports re-routed.
+ * Re-route in-flight senior-staff reports — delegated to seniorStaffRepairService.
  */
-async function rerouteInFlightSeniorStaffReports(db, employeeId) {
-  const reports = await allAsync(
-    db,
-    `SELECT * FROM expense_reports WHERE employeeId = ? AND status = 'pending_senior_staff'`,
-    [employeeId]
-  );
-  if (reports.length === 0) return 0;
-
-  const employee = await dbService.getEmployeeById(employeeId);
-  const employeeName = employee ? (employee.preferredName || employee.name || 'Employee') : 'Employee';
-  const nowIso = new Date().toISOString();
-  let count = 0;
-
-  for (const report of reports) {
-    const init = await initializeApprovalWorkflow(report);
-    const status = statusForStage(init.currentApprovalStage);
-    await runAsync(
-      db,
-      `UPDATE expense_reports
-         SET status = ?, approvalWorkflow = ?, currentApprovalStage = ?, currentApproverId = ?, currentApproverName = ?, escalationDueAt = ?, updatedAt = ?
-       WHERE id = ?`,
-      [
-        status,
-        JSON.stringify(init.workflow),
-        init.currentApprovalStage,
-        init.currentApproverId,
-        init.currentApproverName,
-        init.escalationDueAt,
-        nowIso,
-        report.id,
-      ]
-    );
-
-    if (init.currentApproverId) {
-      notificationService
-        .notifyReportSubmitted(report.id, employeeId, employeeName, init.currentApproverId)
-        .catch((err) => debugWarn('⚠️ Failed to notify re-routed approver:', err?.message || err));
-    }
-    websocketService.handleDataChangeNotification({
-      type: 'expense_report',
-      action: 'update',
-      data: { id: report.id },
-      timestamp: new Date(),
-      employeeId,
-    });
-    count++;
-  }
-
-  return count;
+async function rerouteReportsForEmployee(db, employeeId) {
+  return rerouteInFlightSeniorStaffReports(db, employeeId);
 }
 
 /**
@@ -797,7 +749,22 @@ router.get('/api/supervisors/:supervisorId/group', async (req, res) => {
       [supervisorId]
     );
 
-    const members = rows.map((r) => ({
+    // Self-heal stale seniorStaffId values (archived approver, lost designation, etc.)
+    for (const row of rows) {
+      if (row.seniorStaffId) {
+        await repairInvalidSeniorStaffAssignmentForEmployee(row.id);
+      }
+    }
+    const refreshedRows = await allAsync(
+      db,
+      `SELECT id, name, preferredName, email, position, permissions, costCenters, selectedCostCenters, supervisorId, seniorStaffId
+       FROM employees
+       WHERE supervisorId = ? AND (archived IS NULL OR archived = 0)
+       ORDER BY name`,
+      [supervisorId]
+    );
+
+    const members = refreshedRows.map((r) => ({
       id: r.id,
       name: r.name,
       preferredName: r.preferredName,
@@ -850,19 +817,19 @@ router.patch('/api/supervisors/:supervisorId/group/members/:employeeId/senior-st
     );
     await runAsync(db, 'UPDATE employees SET permissions = ?, updatedAt = ? WHERE id = ?', [nextPermissions, nowIso, employeeId]);
 
-    // When revoking, detach any staff who pointed to this (now former) senior staff and re-route.
-    const detachedReports = [];
+    // When revoking, detach staff who pointed to this senior staff and re-route.
+    let detachedReports = [];
     if (!makeSenior) {
-      const reportsToThisSenior = await allAsync(
+      const dependents = await allAsync(
         db,
         `SELECT id FROM employees WHERE seniorStaffId = ? AND (archived IS NULL OR archived = 0)`,
         [employeeId]
       );
-      for (const staff of reportsToThisSenior) {
-        await runAsync(db, 'UPDATE employees SET seniorStaffId = NULL, updatedAt = ? WHERE id = ?', [nowIso, staff.id]);
-        const rerouted = await rerouteInFlightSeniorStaffReports(db, staff.id);
-        detachedReports.push({ employeeId: staff.id, reroutedReports: rerouted });
-      }
+      const repair = await repairAfterSeniorStaffUnavailable(employeeId);
+      detachedReports = dependents.map((staff, index) => ({
+        employeeId: staff.id,
+        reroutedReports: index === 0 ? repair.reroutedReports : 0,
+      }));
     }
 
     logAuditEvent({
@@ -951,7 +918,7 @@ router.patch('/api/supervisors/:supervisorId/group/assignments', async (req, res
 
       await runAsync(db, 'UPDATE employees SET seniorStaffId = ?, updatedAt = ? WHERE id = ?', [seniorStaffId, nowIso, employeeId]);
       member.seniorStaffId = seniorStaffId; // keep cache consistent within this batch
-      const reroutedReports = await rerouteInFlightSeniorStaffReports(db, employeeId);
+      const reroutedReports = await rerouteReportsForEmployee(db, employeeId);
 
       logAuditEvent({
         action: 'employee_sensitive_update',

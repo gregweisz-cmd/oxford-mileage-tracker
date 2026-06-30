@@ -1162,6 +1162,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
           {activeTab === 2 && (
             <SupervisorTeamManagementTab
               supervisorId={supervisorId}
+              supervisorName={supervisorName}
               onGroupChanged={loadTeamMembers}
             />
           )}

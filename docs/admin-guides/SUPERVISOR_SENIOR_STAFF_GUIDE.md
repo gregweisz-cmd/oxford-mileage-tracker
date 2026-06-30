@@ -281,6 +281,51 @@ Uses existing Employee API:
 - [ ] Remove supervisor with multiple staff
 - [ ] Add employee who already has keywords in position
 
+## Supervisor Portal: Team setup (self-service)
+
+Supervisors can manage Senior Staff and reporting lines for **their direct group** (`supervisorId` = them) without admin access.
+
+### Where to find it
+
+1. Open the **Supervisor Portal** (expense.oxfordhouse.org).
+2. Go to the **Team setup** tab.
+
+### What supervisors can do
+
+| Action | Effect |
+|--------|--------|
+| Toggle **Senior Staff** | Adds/removes the `senior_staff` permission for a team member (does not change HR job title). |
+| **Reports to** dropdown | Sets `seniorStaffId` — who reviews that person's report first. Choose **None** to skip straight to you (Supervisor). |
+| **Save assignments** | Persists reporting changes in batch. |
+
+### Approval chain
+
+- **With Senior Staff assigned:** Staff → Senior Staff → Supervisor (you) → Finance  
+- **No Senior Staff:** Staff → Supervisor (you) → Finance  
+
+The **Approval chain** column in Team setup previews this path.
+
+### In-flight reports
+
+When you change who someone reports to, or revoke Senior Staff from someone who had direct reports:
+
+- Reports already waiting at **Senior Staff** are **re-routed** to the new approver (or to you if Senior Staff is cleared).
+- New submissions use the updated assignments immediately.
+
+### Limits
+
+- Supervisors only see/edit employees in **their** group (not other supervisors' teams).
+- They cannot grant admin, finance, or other permissions — only `senior_staff`.
+- Adding/removing people from the org (who has you as `supervisorId`) is still **Admin Portal** only.
+
+### QA checklist (Team setup)
+
+- [ ] Designate a team member as Senior Staff; confirm they can open **Senior Staff Portal**.
+- [ ] Assign two staff members to different Senior Staff; submit a report as each; confirm routing.
+- [ ] Change an assignment while a report is `pending_senior_staff`; confirm it moves to the new approver.
+- [ ] Revoke Senior Staff from someone with reports; confirm dependents are unassigned and reports re-route.
+- [ ] Archive a Senior Staff employee in Admin; confirm Team setup clears stale assignments on refresh.
+
 ## Support
 
 For questions or issues, contact the development team.
@@ -289,6 +334,7 @@ For questions or issues, contact the development team.
 
 - **v1.0** - Initial supervisor management
 - **v2.0** - Added Senior Staff designation, tabs, delete functionality
+- **v2.1** - Supervisor Portal **Team setup** tab (self-service Senior Staff + reporting assignments)
 
 
 ---

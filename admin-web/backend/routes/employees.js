@@ -15,6 +15,8 @@ const { requireAuth, requireAnyRole, requireSelfOrRole } = require('../middlewar
 const externalEmployeeSync = require('../services/externalEmployeeSync');
 const { formatBaseAddressForStorage } = require('../utils/baseAddressNormalizer');
 const { logAuditEvent } = require('../services/auditLogService');
+const { repairAfterSeniorStaffUnavailable } = require('../services/seniorStaffRepairService');
+const { hasSeniorStaffDesignation } = require('../utils/staffDesignations');
 
 function withoutSensitiveEmployeeFields(employee) {
   if (!employee || typeof employee !== 'object') return employee;
@@ -877,6 +879,15 @@ router.put('/api/employees/:id', requireSelfOrRole('id', ['admin']), async (req,
             details: { changedFields: changedSensitiveFields },
           });
         }
+        if (updateData.permissions !== undefined) {
+          const wasSeniorStaff = hasSeniorStaffDesignation(currentEmployee);
+          const isSeniorStaff = hasSeniorStaffDesignation({ ...currentEmployee, permissions });
+          if (wasSeniorStaff && !isSeniorStaff) {
+            repairAfterSeniorStaffUnavailable(id).catch((repairErr) => {
+              debugWarn('⚠️ Senior staff repair after permission change failed:', repairErr?.message || repairErr);
+            });
+          }
+        }
         res.json({ message: 'Employee updated successfully', changes: this.changes });
       }
     );
@@ -896,7 +907,7 @@ router.post('/api/employees/:id/archive', requireAnyRole(['admin']), (req, res) 
   db.run(
     'UPDATE employees SET archived = 1, updatedAt = ? WHERE id = ?',
     [now, id],
-    function(err) {
+    async function(err) {
       if (err) {
         debugError('❌ Error archiving employee:', err);
         res.status(500).json({ error: err.message });
@@ -908,11 +919,18 @@ router.post('/api/employees/:id/archive', requireAnyRole(['admin']), (req, res) 
         return;
       }
       debugLog(`✅ Employee archived successfully: ${id} (${this.changes} row(s) updated)`);
+      let seniorStaffRepair = { clearedStaff: 0, reroutedReports: 0 };
+      try {
+        seniorStaffRepair = await repairAfterSeniorStaffUnavailable(id);
+      } catch (repairErr) {
+        debugWarn('⚠️ Senior staff repair after archive failed:', repairErr?.message || repairErr);
+      }
       logAuditEvent({
         action: 'employee_archived',
         actor: req.authenticatedEmployee,
         targetType: 'employee',
         targetId: id,
+        details: seniorStaffRepair.clearedStaff > 0 ? { seniorStaffRepair } : undefined,
       });
       
       // Verify the archive was successful
@@ -922,7 +940,7 @@ router.post('/api/employees/:id/archive', requireAnyRole(['admin']), (req, res) 
         }
       });
       
-      res.json({ message: 'Employee archived successfully' });
+      res.json({ message: 'Employee archived successfully', seniorStaffRepair });
     }
   );
 });

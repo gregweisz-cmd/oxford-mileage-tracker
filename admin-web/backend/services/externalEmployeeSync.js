@@ -13,6 +13,7 @@ const {
   mergeLegacyDesignationsIntoPermissions,
 } = require('../utils/staffDesignations');
 const { debugLog, debugError } = require('../debug');
+const { repairAfterSeniorStaffUnavailable } = require('./seniorStaffRepairService');
 
 const EXTERNAL_API_URL = 'https://api.appwarmer.com/api/employee';
 const TOKEN_ENV_KEYS = ['EMPLOYEE_API_TOKEN', 'APPWARMER_EMPLOYEE_API_TOKEN'];
@@ -788,6 +789,11 @@ async function applySyncFromExternal(body) {
       await new Promise((resolve, reject) => {
         db.run('UPDATE employees SET archived = 1, updatedAt = ? WHERE id = ?', [new Date().toISOString(), id], (err) => (err ? reject(err) : resolve()));
       });
+      try {
+        await repairAfterSeniorStaffUnavailable(id);
+      } catch (repairErr) {
+        stats.errors.push(`Senior staff repair after archive ${id}: ${repairErr.message}`);
+      }
       stats.archived++;
     } catch (err) {
       stats.errors.push(`Archive ${id}: ${err.message}`);
