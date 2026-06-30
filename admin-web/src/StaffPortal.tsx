@@ -7834,8 +7834,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                       const descDateStr = normalizeDate(desc.date);
                       return entryDateStr === descDateStr;
                     });
-                    const hasMileageForDay = rawMileageEntries.some((e: any) => normalizeDate(e.date) === entryDateStr);
-                    
                     const descriptionItemId = `description-${entryDateStr}`;
                     const isDescriptionSelected = selectedDailyDescriptionItems.has(descriptionItemId);
                     const needsDescriptionRevision = itemsNeedingRevision.has(descriptionItemId);
@@ -8107,17 +8105,15 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               title={
                                 isAdminView
                                   ? 'Day off cannot be changed in admin view'
-                                  : hasMileageForDay
-                                    ? 'Day off cannot be selected when there are mileage entries for this day'
-                                    : !dayDescription?.dayOff && dayDescription?.description && dayDescription.description.trim().length > 0
-                                      ? 'Clear the daily description first to mark as day off'
-                                      : 'Mark as day off'
+                                  : !dayDescription?.dayOff && dayDescription?.description && dayDescription.description.trim().length > 0
+                                    ? 'Clear the daily description first to mark as day off'
+                                    : 'Mark as day off'
                               }
                             >
                               <span>
                             <Checkbox
                               checked={dayDescription?.dayOff || false}
-                              disabled={isAdminView || hasMileageForDay || (!dayDescription?.dayOff && dayDescription?.description && dayDescription.description.trim().length > 0)}
+                              disabled={isAdminView || (!dayDescription?.dayOff && dayDescription?.description && dayDescription.description.trim().length > 0)}
                               onChange={async (e) => {
                                 try {
                                   // Update or create daily description
