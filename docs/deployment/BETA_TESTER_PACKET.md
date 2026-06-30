@@ -272,6 +272,8 @@ Use this as a **quality** list during beta:
 
 These are the highest-priority checks for the current beta cycle.
 
+> **This cohort:** testers are on **iPhone (TestFlight)** and the **web portal** only — there are no Android testers in this group, so the Android-specific check (**C**) does not apply this cycle. The newest items to focus on are **E**, **F**, and **G** below.
+
 ### A) GPS start/stop location precision (mobile)
 
 Goal: confirm addresses are more complete (street number + street + city/state) when starting or stopping GPS trips.
@@ -310,11 +312,38 @@ Goal: verify odometer carries forward across cost centers in report order.
 3. Confirm CC2 starts where CC1 ended, CC3 starts where CC2 ended, etc.
 4. Export and confirm PDF/export values match the same carry-forward behavior.
 
+### E) PTO and partial-PTO hours (mobile + web)
+
+Goal: confirm PTO is captured correctly, the full-day default and reminder work, and partial PTO can be set on the web and lands on the right calendar day.
+
+1. On the **iPhone app**, open **Hours & Descriptions**, mark a day as a **Day Off** and set the type to **PTO**.
+2. Confirm the **"Heads up!"** reminder appears the **first time** you mark a PTO day in a given month (it should stay quiet for the rest of that month).
+3. Confirm the day defaults to **8 PTO hours**.
+4. For a **partial** PTO day, open the **web portal → Staff Portal → Timesheet tab** and edit the PTO hours for that day (e.g., `4`).
+5. **Sync** on the app, then tap **Refresh Data**. Confirm PTO hours and working hours stay on the **correct dates** (no day shifting) on **both** the app and the web portal.
+
+### F) Day Off toggle on days with mileage (web Staff Portal)
+
+Goal: confirm you can mark **and** unmark a Day Off on a day that already has mileage entries.
+
+1. In the **Staff Portal**, find a day that has **mileage entries**.
+2. **Check** the Day Off box for that day, then **uncheck** it. Confirm the checkbox is **not locked** and your mileage entries are still there.
+3. Choose a day-off **type** (PTO, Holiday, etc.) and confirm it saves.
+
+### G) Daily Hours edit / clear / save flow (mobile)
+
+Goal: confirm editing several days in a row is smooth and sync is reliable.
+
+1. On the **iPhone app**, edit hours and descriptions for **several days in a row**.
+2. After saving a day, confirm you **stay on the day list** (you should **not** be bumped back to the dashboard) and can keep editing.
+3. Use **Clear day** to clear a day's hours and description; confirm it clears.
+4. Edit/clear several days quickly and confirm you do **not** see a **"Too many requests"** or **"Sync Failed"** error.
+
 ---
 
 ## 9. What to include in reports for these priorities
 
-- Device + OS version (example: Moto G Stylus 5G 2024, Android version).
+- Device + OS version (example: iPhone 15, iOS 18) or the browser you used for the web portal.
 - App path used (GPS Tracking, Add Mileage Entry, Hours & Descriptions, Staff Portal).
 - Exact date(s) used while testing.
 - Screenshot of values shown before and after save/export.
