@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   IconButton,
   List,
   ListItem,
@@ -41,6 +42,21 @@ interface OxfordHouseRow {
 
 interface MyFlockManagementProps {
   employeeId: string;
+  /** Full base address line — used to default the Oxford House state filter */
+  baseAddress?: string;
+}
+
+function extractStateFromBaseAddress(baseAddress: string): string {
+  const trimmed = (baseAddress || '').trim();
+  if (!trimmed) return '';
+  const stateMatch = trimmed.match(/,\s*([A-Z]{2})(?:\s+\d{5}(?:-\d{4})?)?\s*$/i);
+  if (stateMatch) return stateMatch[1].toUpperCase();
+  const fallback = trimmed.match(/\b([A-Z]{2})\b/g);
+  return fallback?.length ? fallback[fallback.length - 1].toUpperCase() : '';
+}
+
+function normalizeState(state: string): string {
+  return (state || '').trim().toUpperCase().slice(0, 2);
 }
 
 function getAuthHeaders(): HeadersInit {
@@ -55,9 +71,11 @@ function formatHouseAddress(house: OxfordHouseRow): string {
   return `${house.address}, ${house.city}, ${house.state} ${house.zipCode}`.trim();
 }
 
-const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId }) => {
+const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseAddress = '' }) => {
   const [flockRows, setFlockRows] = useState<FlockHouseRow[]>([]);
   const [oxfordHouses, setOxfordHouses] = useState<OxfordHouseRow[]>([]);
+  const [availableStates, setAvailableStates] = useState<string[]>([]);
+  const [selectedState, setSelectedState] = useState('');
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
@@ -83,7 +101,19 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId }) => 
     }
     const data = (await response.json()) as OxfordHouseRow[];
     setOxfordHouses(data || []);
-  }, []);
+
+    const states = Array.from(
+      new Set((data || []).map((house) => normalizeState(house.state)).filter(Boolean))
+    ).sort();
+    setAvailableStates(states);
+
+    const extractedState = extractStateFromBaseAddress(baseAddress);
+    if (extractedState && states.includes(extractedState)) {
+      setSelectedState(extractedState);
+    } else {
+      setSelectedState('');
+    }
+  }, [baseAddress]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -108,11 +138,20 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId }) => 
 
   const flockHouseIds = useMemo(() => new Set(flockRows.map((row) => row.oxfordHouseId)), [flockRows]);
 
+  const housesInSelectedState = useMemo(() => {
+    const notInFlock = oxfordHouses.filter((house) => !flockHouseIds.has(house.id));
+    if (!selectedState) return notInFlock;
+    return notInFlock.filter(
+      (house) => normalizeState(house.state) === normalizeState(selectedState)
+    );
+  }, [oxfordHouses, flockHouseIds, selectedState]);
+
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-    return oxfordHouses
-      .filter((house) => !flockHouseIds.has(house.id))
+    const pool = housesInSelectedState;
+    if (!q) return pool.slice(0, 12);
+
+    return pool
       .filter((house) => {
         const address = formatHouseAddress(house);
         return (
@@ -123,7 +162,7 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId }) => 
         );
       })
       .slice(0, 12);
-  }, [oxfordHouses, flockHouseIds, searchQuery]);
+  }, [housesInSelectedState, searchQuery]);
 
   const handleAdd = async (house: OxfordHouseRow) => {
     setSaving(true);
@@ -221,39 +260,66 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId }) => 
           label="Search Oxford Houses to add"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          sx={{ mb: 2 }}
+          sx={{ mb: 1 }}
           disabled={loading || saving}
         />
 
-        {searchQuery.trim() ? (
+        {availableStates.length > 0 ? (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2, alignItems: 'center' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+              Filter by state:
+            </Typography>
+            <Chip
+              label="All States"
+              size="small"
+              onClick={() => setSelectedState('')}
+              color={!selectedState ? 'primary' : 'default'}
+              variant={!selectedState ? 'filled' : 'outlined'}
+            />
+            {availableStates.map((state) => (
+              <Chip
+                key={state}
+                label={state}
+                size="small"
+                onClick={() => setSelectedState(state)}
+                color={selectedState === state ? 'primary' : 'default'}
+                variant={selectedState === state ? 'filled' : 'outlined'}
+              />
+            ))}
+          </Box>
+        ) : null}
+
+        {searchResults.length > 0 ? (
           <List dense sx={{ mb: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-            {searchResults.length === 0 ? (
-              <ListItem>
-                <ListItemText primary="No matching houses (or already in your flock)" />
+            {searchResults.map((house) => (
+              <ListItem
+                key={house.id}
+                secondaryAction={
+                  <Button
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => void handleAdd(house)}
+                    disabled={saving}
+                  >
+                    Add
+                  </Button>
+                }
+              >
+                <ListItemText
+                  primary={house.name}
+                  secondary={formatHouseAddress(house)}
+                />
               </ListItem>
-            ) : (
-              searchResults.map((house) => (
-                <ListItem
-                  key={house.id}
-                  secondaryAction={
-                    <Button
-                      size="small"
-                      startIcon={<AddIcon />}
-                      onClick={() => void handleAdd(house)}
-                      disabled={saving}
-                    >
-                      Add
-                    </Button>
-                  }
-                >
-                  <ListItemText
-                    primary={house.name}
-                    secondary={formatHouseAddress(house)}
-                  />
-                </ListItem>
-              ))
-            )}
+            ))}
           </List>
+        ) : !loading ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {searchQuery.trim()
+              ? `No matching houses${selectedState ? ` in ${selectedState}` : ''} (or already in your flock).`
+              : selectedState
+                ? `No houses available in ${selectedState} to add. Try All States or another filter.`
+                : 'Search above to find Oxford Houses to add.'}
+          </Typography>
         ) : null}
 
         {loading ? (

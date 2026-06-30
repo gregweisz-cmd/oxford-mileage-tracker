@@ -21,6 +21,11 @@ import { OxfordHouseService } from '../services/oxfordHouseService';
 import { ApiSyncService } from '../services/apiSyncService';
 import { searchTextInputProps } from '../utils/keyboardDismiss';
 import {
+  filterOxfordHousesForPicker,
+  getAvailableOxfordHouseStates,
+  getDefaultOxfordHouseSelection,
+} from '../utils/oxfordHousePicker';
+import {
   completeAddressPickerReturn,
   setPendingGpsLocationPick,
   setPendingMileageLocationPick,
@@ -40,6 +45,10 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
   const [addSearchQuery, setAddSearchQuery] = useState('');
   const [addSearchResults, setAddSearchResults] = useState<OxfordHouse[]>([]);
   const [addSearchLoading, setAddSearchLoading] = useState(false);
+  const [allOxfordHouses, setAllOxfordHouses] = useState<OxfordHouse[]>([]);
+  const [addSelectedState, setAddSelectedState] = useState('');
+  const [addAvailableStates, setAddAvailableStates] = useState<string[]>([]);
+  const [isAddStatePickerVisible, setIsAddStatePickerVisible] = useState(false);
 
   const fromMileageEntry = route?.params?.fromMileageEntry;
   const locationType = route?.params?.locationType as 'start' | 'end' | undefined;
@@ -87,25 +96,58 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
     void loadData({ pullFromBackend: !isPickerMode });
   }, [loadData, isPickerMode]);
 
+  const loadOxfordHousesForAdd = useCallback(async () => {
+    setAddSearchLoading(true);
+    try {
+      await OxfordHouseService.initializeOxfordHouses();
+      const houses = await OxfordHouseService.getAllOxfordHouses();
+      setAllOxfordHouses(houses);
+      setAddAvailableStates(getAvailableOxfordHouseStates(houses));
+
+      const defaultSelection = getDefaultOxfordHouseSelection(
+        houses,
+        currentEmployee?.baseAddress
+      );
+      setAddSelectedState(defaultSelection.selectedState);
+      setAddSearchResults(
+        filterOxfordHousesForPicker(houses, defaultSelection.selectedState, '')
+      );
+    } catch (error) {
+      console.error('Error loading Oxford Houses for flock:', error);
+      setAllOxfordHouses([]);
+      setAddSearchResults([]);
+    } finally {
+      setAddSearchLoading(false);
+    }
+  }, [currentEmployee?.baseAddress]);
+
   useEffect(() => {
     if (!showAddModal) return;
+    void loadOxfordHousesForAdd();
+  }, [showAddModal, loadOxfordHousesForAdd]);
 
-    const runSearch = async () => {
-      setAddSearchLoading(true);
-      try {
-        await OxfordHouseService.initializeOxfordHouses();
-        const results = await OxfordHouseService.searchOxfordHouses(addSearchQuery);
-        setAddSearchResults(results.slice(0, 40));
-      } catch (error) {
-        console.error('Error searching Oxford Houses for flock:', error);
-        setAddSearchResults([]);
-      } finally {
-        setAddSearchLoading(false);
-      }
-    };
+  useEffect(() => {
+    if (!showAddModal || allOxfordHouses.length === 0) return;
+    setAddSearchResults(
+      filterOxfordHousesForPicker(allOxfordHouses, addSelectedState, addSearchQuery)
+    );
+  }, [addSearchQuery, addSelectedState, allOxfordHouses, showAddModal]);
 
-    void runSearch();
-  }, [addSearchQuery, showAddModal]);
+  const handleAddStateFilterChange = (state: string) => {
+    setAddSelectedState(state);
+    setIsAddStatePickerVisible(false);
+  };
+
+  const openAddModal = () => {
+    setAddSearchQuery('');
+    setShowAddModal(true);
+  };
+
+  const closeAddModal = () => {
+    setShowAddModal(false);
+    setAddSearchQuery('');
+    setIsAddStatePickerVisible(false);
+  };
 
   const refreshLocalFlock = async () => {
     if (!currentEmployee) return;
@@ -113,11 +155,23 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
     setFlockEntries(entries);
   };
 
+  const defaultFlockState = currentEmployee?.baseAddress
+    ? OxfordHouseService.extractStateFromAddress(currentEmployee.baseAddress)
+    : '';
+
   const filteredEntries = flockEntries.filter((entry) => {
-    if (!searchQuery.trim()) return true;
     const house = entry.house;
     if (!house) return false;
+
+    if (defaultFlockState && !searchQuery.trim()) {
+      const inState =
+        OxfordHouseService.normalizeState(house.state) ===
+        OxfordHouseService.normalizeState(defaultFlockState);
+      if (!inState) return false;
+    }
+
     const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
     const address = OxfordHouseService.formatHouseAddress(house);
     return (
       house.name.toLowerCase().includes(q) ||
@@ -165,8 +219,7 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
     const { SyncIntegrationService } = await import('../services/syncIntegrationService');
     void SyncIntegrationService.processSyncQueue();
     Alert.alert('Added to Flock', `${house.name} is now in My Flock.`);
-    setShowAddModal(false);
-    setAddSearchQuery('');
+    closeAddModal();
   };
 
   const handleRemoveFromFlock = (entry: FlockHouseWithDetails) => {
@@ -288,7 +341,7 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
       </View>
 
       {!isPickerMode ? (
-        <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
+        <TouchableOpacity style={styles.addButton} onPress={openAddModal}>
           <MaterialCommunityIcons name="sheep" size={22} color="#fff" />
           <Text style={styles.addButtonText}>Add Oxford House to Flock</Text>
         </TouchableOpacity>
@@ -318,11 +371,11 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
         />
       )}
 
-      <Modal visible={showAddModal} animationType="slide" onRequestClose={() => setShowAddModal(false)}>
+      <Modal visible={showAddModal} animationType="slide" onRequestClose={closeAddModal}>
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Add to My Flock</Text>
-            <TouchableOpacity onPress={() => setShowAddModal(false)}>
+            <TouchableOpacity onPress={closeAddModal}>
               <MaterialIcons name="close" size={24} color="#333" />
             </TouchableOpacity>
           </View>
@@ -338,6 +391,23 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
               {...searchTextInputProps}
             />
           </View>
+
+          {addAvailableStates.length > 0 ? (
+            <View style={styles.stateFilterContainer}>
+              <Text style={styles.stateFilterLabel}>Filter by State:</Text>
+              <TouchableOpacity
+                style={styles.statePickerButton}
+                onPress={() => setIsAddStatePickerVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.statePickerText}>
+                  {addSelectedState ? addSelectedState : 'All States'}
+                </Text>
+                <MaterialIcons name="arrow-drop-down" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           {addSearchLoading ? (
             <ActivityIndicator style={{ marginTop: 24 }} color="#2196F3" />
           ) : (
@@ -357,8 +427,54 @@ export default function MyFlockScreen({ navigation, route }: MyFlockScreenProps)
                 </TouchableOpacity>
               )}
               keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptySubtitle}>
+                    No Oxford Houses match your search
+                    {addSelectedState ? ` in ${addSelectedState}` : ''}.
+                  </Text>
+                </View>
+              }
             />
           )}
+
+          {isAddStatePickerVisible ? (
+            <View style={styles.statePickerOverlay}>
+              <View style={styles.statePickerOverlayContent}>
+                <View style={styles.statePickerOverlayHeader}>
+                  <Text style={styles.statePickerOverlayTitle}>Select State</Text>
+                  <TouchableOpacity onPress={() => setIsAddStatePickerVisible(false)}>
+                    <MaterialIcons name="close" size={24} color="#666" />
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={['', ...addAvailableStates]}
+                  keyExtractor={(item, index) => `${item || 'all'}-${index}`}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[
+                        styles.statePickerOverlayItem,
+                        addSelectedState === item && styles.statePickerOverlayItemSelected,
+                      ]}
+                      onPress={() => handleAddStateFilterChange(item)}
+                    >
+                      <Text
+                        style={[
+                          styles.statePickerOverlayItemText,
+                          addSelectedState === item && styles.statePickerOverlayItemTextSelected,
+                        ]}
+                      >
+                        {item || 'All States'}
+                      </Text>
+                      {addSelectedState === item ? (
+                        <MaterialIcons name="check" size={20} color="#2196F3" />
+                      ) : null}
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            </View>
+          ) : null}
         </View>
       </Modal>
     </View>
@@ -446,4 +562,56 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   addResultText: { flex: 1 },
+  stateFilterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  stateFilterLabel: { fontSize: 14, color: '#666', fontWeight: '500' },
+  statePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  statePickerText: { fontSize: 14, color: '#333', marginRight: 4 },
+  statePickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  statePickerOverlayContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: '60%',
+  },
+  statePickerOverlayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  statePickerOverlayTitle: { fontSize: 18, fontWeight: '700', color: '#333' },
+  statePickerOverlayItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  statePickerOverlayItemSelected: { backgroundColor: '#E3F2FD' },
+  statePickerOverlayItemText: { fontSize: 16, color: '#333' },
+  statePickerOverlayItemTextSelected: { color: '#2196F3', fontWeight: '600' },
 });

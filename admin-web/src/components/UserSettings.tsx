@@ -860,7 +860,15 @@ const UserSettings: React.FC<UserSettingsProps> = ({ employeeId, onSettingsUpdat
           </CardContent>
         </Card>
 
-        <MyFlockManagement employeeId={employeeId} />
+        <MyFlockManagement
+          employeeId={employeeId}
+          baseAddress={formatBaseAddress(
+            profile.baseAddresses.address1.street,
+            profile.baseAddresses.address1.city,
+            profile.baseAddresses.address1.state,
+            profile.baseAddresses.address1.zip
+          )}
+        />
 
         {/* Base Addresses */}
         <Card>
