@@ -85,7 +85,7 @@ const CORS_CONFIG = {
   ],
   exposedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   // Allow all origins in development for mobile app testing
   allowAllInDevelopment: process.env.NODE_ENV !== 'production'
 };
