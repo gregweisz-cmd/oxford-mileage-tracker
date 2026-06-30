@@ -477,8 +477,8 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
       if (alreadyShown) return;
       await AsyncStorage.setItem(key, '1');
       Alert.alert(
-        'Partial PTO?',
-        'PTO defaults to a full 8-hour day. If this PTO day is shorter, you can adjust the hours later on the web portal\u2019s Timesheet tab.'
+        'Heads up!',
+        "PTO is set to 8 hours. If you're taking less than a full day, visit the web portal to update your hours before submitting."
       );
     } catch (e) {
       if (__DEV__) console.warn('DailyHoursScreen: PTO hint failed', e);

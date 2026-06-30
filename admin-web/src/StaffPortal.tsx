@@ -8194,7 +8194,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                         const hintKey = `pto_partial_hint_${employeeId}_${currentYear}-${currentMonth}`;
                                         if (!localStorage.getItem(hintKey)) {
                                           localStorage.setItem(hintKey, '1');
-                                          showInfo('PTO defaults to a full 8-hour day. For a partial PTO day, edit the number in the Timesheet tab (PTO row).', 8000);
+                                          showInfo("Heads up! PTO is set to 8 hours. If you're taking less than a full day, update your hours in the Timesheet tab before submitting.", 8000);
                                         }
                                       } catch { /* ignore storage access errors */ }
                                     }
