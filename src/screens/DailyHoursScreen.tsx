@@ -76,6 +76,8 @@ const DEFAULT_DESCRIPTION_TEMPLATES = [
 // AsyncStorage keys for persisting description templates and recent descriptions
 const DESCRIPTION_TEMPLATES_KEY = '@description_templates';
 const RECENT_DESCRIPTIONS_KEY = '@recent_descriptions';
+// Prefix for the once-per-month "partial PTO" reminder flag (keyed by employee + month).
+const PTO_PARTIAL_HINT_PREFIX = '@pto_partial_hint';
 
 /**
  * Daily Hours Screen Component
@@ -460,6 +462,28 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
       ]
     );
   };
+
+  /**
+   * The first time a PTO day is marked in a given month, remind the user that PTO defaults to a
+   * full 8-hour day and that partial PTO is edited on the web portal. Stays quiet for the rest of
+   * the month (flag keyed by employee + month). Mobile has no per-hour PTO editor by design.
+   */
+  const maybeShowPtoPartialHint = useCallback(async () => {
+    try {
+      const empId = currentEmployee?.id;
+      if (!empId) return;
+      const key = `${PTO_PARTIAL_HINT_PREFIX}_${empId}_${currentMonth.getFullYear()}-${currentMonth.getMonth() + 1}`;
+      const alreadyShown = await AsyncStorage.getItem(key);
+      if (alreadyShown) return;
+      await AsyncStorage.setItem(key, '1');
+      Alert.alert(
+        'Partial PTO?',
+        'PTO defaults to a full 8-hour day. If this PTO day is shorter, you can adjust the hours later on the web portal\u2019s Timesheet tab.'
+      );
+    } catch (e) {
+      if (__DEV__) console.warn('DailyHoursScreen: PTO hint failed', e);
+    }
+  }, [currentEmployee, currentMonth]);
 
   const handleSave = async (): Promise<boolean> => {
     if (!selectedDay || !currentEmployee) return false;
@@ -1023,6 +1047,9 @@ export default function DailyHoursScreen({ navigation, route }: DailyHoursScreen
                                   setDayOffType(type);
                                   markHoursDirty();
                                   setShowDayOffDropdown(false);
+                                  if (type === 'PTO') {
+                                    maybeShowPtoPartialHint();
+                                  }
                                 }}
                               >
                                 <Text style={styles.descriptionPickerItemText}>{type}</Text>

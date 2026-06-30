@@ -1210,7 +1210,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   });
 
   // UI Enhancement hooks
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
   const { showErrorPrompt } = useErrorPrompt();
   const { isLoading: uiLoading, startLoading, stopLoading } = useLoadingState();
 
@@ -8187,6 +8187,17 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 <Select
                                   value={dayDescription?.dayOffType || 'Day Off'}
                                   onChange={async (e) => {
+                                    // First PTO day of the month: remind that PTO defaults to a
+                                    // full 8-hour day and partial PTO is edited here in the Timesheet.
+                                    if (e.target.value === 'PTO') {
+                                      try {
+                                        const hintKey = `pto_partial_hint_${employeeId}_${currentYear}-${currentMonth}`;
+                                        if (!localStorage.getItem(hintKey)) {
+                                          localStorage.setItem(hintKey, '1');
+                                          showInfo('PTO defaults to a full 8-hour day. For a partial PTO day, edit the number in the Timesheet tab (PTO row).', 8000);
+                                        }
+                                      } catch { /* ignore storage access errors */ }
+                                    }
                                     try {
                                       const newDescriptions = [...dailyDescriptions];
                                       const entryDateStr = normalizeDate(entry.date);
