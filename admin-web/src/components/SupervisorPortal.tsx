@@ -76,6 +76,7 @@ import { useErrorPrompt, isHttpClientError } from '../contexts/ErrorPromptContex
 import OxfordHouseLogo from './OxfordHouseLogo';
 import SupervisorDashboard from './SupervisorDashboard';
 import SupervisorContractUtilizationTab from './SupervisorContractUtilizationTab';
+import SupervisorTeamManagementTab from './SupervisorTeamManagementTab';
 import { NotificationBell } from './NotificationBell';
 import DetailedReportView from './DetailedReportView';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
@@ -182,9 +183,8 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
 
   const loadTeamMembers = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/supervisors/${supervisorId}/team`);
-      if (!response.ok) throw new Error('Failed to load team members');
-      const data = await response.json();
+      const { apiGet } = await import('../services/rateLimitedApi');
+      const data = await apiGet<any[]>(`/api/supervisors/${supervisorId}/team`);
       const mapped: Employee[] = data.map((member: any) => ({
         id: member.id,
         name: member.name,
@@ -818,7 +818,7 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
               />
               <Tab 
                 icon={<PeopleIcon />} 
-                label={`Team (${teamMembers.length})`} 
+                label={`Team setup (${teamMembers.length})`} 
                 iconPosition="start"
               />
               <Tab 
@@ -1158,81 +1158,12 @@ const SupervisorPortal: React.FC<SupervisorPortalProps> = ({ supervisorId, super
             </Box>
           )}
 
-          {/* Team Tab */}
+          {/* Team setup: Senior Staff designation + reporting assignments */}
           {activeTab === 2 && (
-            <Box sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6">Team Members</Typography>
-                <Button
-                  startIcon={<PersonAddIcon />}
-                  variant="outlined"
-                  size="small"
-                  onClick={() => {
-                    showErrorPrompt(
-                      'Supervisor team membership is managed in the Admin Portal (Employee Management / Supervisor Management). ' +
-                      'If you need someone added to your team, please contact an administrator.'
-                    );
-                  }}
-                >
-                  Add Team Member
-                </Button>
-              </Box>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                To change who appears in this list, an admin must update supervisor assignments in the Admin Portal.
-              </Typography>
-
-              <List>
-                {teamMembers.map((member) => (
-                  <ListItem key={member.id} divider>
-                    <ListItemAvatar>
-                      <Avatar>
-                        {member.name.split(' ').map(n => n[0]).join('')}
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography 
-                            variant="body1"
-                            sx={{ 
-                              color: 'primary.main',
-                              fontWeight: 'bold',
-                              cursor: 'pointer',
-                              '&:hover': { textDecoration: 'underline' }
-                            }}
-                            onClick={() => handleViewEmployeeReport(member)}
-                          >
-                            {member.name}
-                          </Typography>
-                          <Chip
-                            label={member.isActive ? 'Active' : 'Inactive'}
-                            color={member.isActive ? 'success' : 'default'}
-                            size="small"
-                          />
-                        </Box>
-                      }
-                      secondary={
-                        <>
-                          <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                            {member.position} • {member.email}
-                          </Typography>
-                          <Box component="span" sx={{ display: 'inline-flex', gap: 1, flexWrap: 'wrap' }}>
-                            {(member.costCenters || []).map((cc) => (
-                              <Chip key={cc} label={cc} size="small" variant="outlined" />
-                            ))}
-                          </Box>
-                        </>
-                      }
-                    />
-                    <ListItemSecondaryAction>
-                      <IconButton edge="end">
-                        <VisibilityIcon />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
-              </List>
-            </Box>
+            <SupervisorTeamManagementTab
+              supervisorId={supervisorId}
+              onGroupChanged={loadTeamMembers}
+            />
           )}
 
           {/* Contract utilization (team cost centers vs monthly caps) */}

@@ -8,9 +8,18 @@ const express = require('express');
 const router = express.Router();
 const dbService = require('../services/dbService');
 const websocketService = require('../services/websocketService');
+const notificationService = require('../services/notificationService');
 const helpers = require('../utils/helpers');
 const { debugLog, debugWarn, debugError } = require('../debug');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, getEffectiveRole } = require('../middleware/auth');
+const { logAuditEvent } = require('../services/auditLogService');
+const { initializeApprovalWorkflow, statusForStage } = require('../services/approvalWorkflow');
+const {
+  hasSeniorStaffDesignation,
+  hasSupervisorDesignation,
+  addDesignationPermission,
+  removeDesignationPermission,
+} = require('../utils/staffDesignations');
 
 router.use(['/api/supervisor', '/api/supervisors', '/api/monthly-reports/supervisor'], requireAuth);
 
@@ -663,6 +672,309 @@ router.get('/api/monthly-reports/supervisor/:id/pending', async (req, res) => {
     debugError('❌ Error fetching pending reports:', error);
     debugError('❌ Error stack:', error.stack);
     res.status(500).json({ error: error.message || 'Failed to fetch pending reports' });
+  }
+});
+
+// ===== SUPERVISOR TEAM MANAGEMENT (designate Senior Staff + assign reporting) =====
+
+function getAsync(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
+  });
+}
+function allAsync(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
+  });
+}
+function runAsync(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) reject(err);
+      else resolve(this);
+    });
+  });
+}
+
+/**
+ * Authorize a supervisor-team-management request scoped to :supervisorId.
+ * Admins may act on any group. A non-admin may only act on their OWN group
+ * (params.supervisorId === their id) AND must actually hold the supervisor designation.
+ * Returns true when authorized; otherwise sends a 403 and returns false.
+ */
+function authorizeSupervisorScope(req, res) {
+  const actor = req.authenticatedEmployee;
+  const { supervisorId } = req.params;
+  if (getEffectiveRole(actor) === 'admin') return true;
+  if (actor.id !== supervisorId) {
+    res.status(403).json({ error: 'Access denied' });
+    return false;
+  }
+  if (!hasSupervisorDesignation(actor)) {
+    res.status(403).json({ error: 'Only a supervisor can manage their team.' });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Re-route any of an employee's in-flight reports that are waiting at the senior-staff stage,
+ * after their senior-staff assignment changed. The senior-staff step is the first approval and
+ * has not been approved yet, so rebuilding the workflow from the (now-updated) employee record is
+ * safe: it re-points to the new senior staff, or advances to the supervisor stage when cleared.
+ * Returns the number of reports re-routed.
+ */
+async function rerouteInFlightSeniorStaffReports(db, employeeId) {
+  const reports = await allAsync(
+    db,
+    `SELECT * FROM expense_reports WHERE employeeId = ? AND status = 'pending_senior_staff'`,
+    [employeeId]
+  );
+  if (reports.length === 0) return 0;
+
+  const employee = await dbService.getEmployeeById(employeeId);
+  const employeeName = employee ? (employee.preferredName || employee.name || 'Employee') : 'Employee';
+  const nowIso = new Date().toISOString();
+  let count = 0;
+
+  for (const report of reports) {
+    const init = await initializeApprovalWorkflow(report);
+    const status = statusForStage(init.currentApprovalStage);
+    await runAsync(
+      db,
+      `UPDATE expense_reports
+         SET status = ?, approvalWorkflow = ?, currentApprovalStage = ?, currentApproverId = ?, currentApproverName = ?, escalationDueAt = ?, updatedAt = ?
+       WHERE id = ?`,
+      [
+        status,
+        JSON.stringify(init.workflow),
+        init.currentApprovalStage,
+        init.currentApproverId,
+        init.currentApproverName,
+        init.escalationDueAt,
+        nowIso,
+        report.id,
+      ]
+    );
+
+    if (init.currentApproverId) {
+      notificationService
+        .notifyReportSubmitted(report.id, employeeId, employeeName, init.currentApproverId)
+        .catch((err) => debugWarn('⚠️ Failed to notify re-routed approver:', err?.message || err));
+    }
+    websocketService.handleDataChangeNotification({
+      type: 'expense_report',
+      action: 'update',
+      data: { id: report.id },
+      timestamp: new Date(),
+      employeeId,
+    });
+    count++;
+  }
+
+  return count;
+}
+
+/**
+ * GET a supervisor's direct group, enriched with each member's senior-staff assignment and
+ * whether they hold the senior-staff designation. Also returns the list of senior staff in the group.
+ */
+router.get('/api/supervisors/:supervisorId/group', async (req, res) => {
+  try {
+    const actor = req.authenticatedEmployee;
+    const { supervisorId } = req.params;
+    if (getEffectiveRole(actor) !== 'admin' && actor.id !== supervisorId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const db = dbService.getDb();
+    const rows = await allAsync(
+      db,
+      `SELECT id, name, preferredName, email, position, permissions, costCenters, selectedCostCenters, supervisorId, seniorStaffId
+       FROM employees
+       WHERE supervisorId = ? AND (archived IS NULL OR archived = 0)
+       ORDER BY name`,
+      [supervisorId]
+    );
+
+    const members = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      preferredName: r.preferredName,
+      email: r.email,
+      position: r.position,
+      costCenters: helpers.parseJsonSafe(r.costCenters, []),
+      selectedCostCenters: helpers.parseJsonSafe(r.selectedCostCenters, []),
+      supervisorId: r.supervisorId || null,
+      seniorStaffId: r.seniorStaffId || null,
+      isSeniorStaff: hasSeniorStaffDesignation(r),
+    }));
+
+    const seniorStaff = members
+      .filter((m) => m.isSeniorStaff)
+      .map((m) => ({ id: m.id, name: m.name, preferredName: m.preferredName, email: m.email }));
+
+    res.json({ supervisorId, members, seniorStaff });
+  } catch (error) {
+    debugError('❌ Error fetching supervisor group:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch group' });
+  }
+});
+
+/**
+ * Grant or revoke the Senior Staff designation for a member of the supervisor's group.
+ * Only toggles the `senior_staff` permission (whitelisted — never admin/finance). Revoking also
+ * detaches any group staff who reported to this person and re-routes their in-flight reports.
+ */
+router.patch('/api/supervisors/:supervisorId/group/members/:employeeId/senior-staff', async (req, res) => {
+  try {
+    if (!authorizeSupervisorScope(req, res)) return;
+    const actor = req.authenticatedEmployee;
+    const { supervisorId, employeeId } = req.params;
+    const makeSenior = req.body?.isSeniorStaff === true;
+
+    const db = dbService.getDb();
+    const target = await dbService.getEmployeeById(employeeId);
+    if (!target || target.archived === 1) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+    if (String(target.supervisorId || '') !== String(supervisorId)) {
+      return res.status(403).json({ error: 'That employee is not in your group.' });
+    }
+
+    const nowIso = new Date().toISOString();
+    const nextPermissions = JSON.stringify(
+      makeSenior
+        ? addDesignationPermission(target.permissions, 'senior_staff')
+        : removeDesignationPermission(target.permissions, 'senior_staff')
+    );
+    await runAsync(db, 'UPDATE employees SET permissions = ?, updatedAt = ? WHERE id = ?', [nextPermissions, nowIso, employeeId]);
+
+    // When revoking, detach any staff who pointed to this (now former) senior staff and re-route.
+    const detachedReports = [];
+    if (!makeSenior) {
+      const reportsToThisSenior = await allAsync(
+        db,
+        `SELECT id FROM employees WHERE seniorStaffId = ? AND (archived IS NULL OR archived = 0)`,
+        [employeeId]
+      );
+      for (const staff of reportsToThisSenior) {
+        await runAsync(db, 'UPDATE employees SET seniorStaffId = NULL, updatedAt = ? WHERE id = ?', [nowIso, staff.id]);
+        const rerouted = await rerouteInFlightSeniorStaffReports(db, staff.id);
+        detachedReports.push({ employeeId: staff.id, reroutedReports: rerouted });
+      }
+    }
+
+    logAuditEvent({
+      action: 'employee_sensitive_update',
+      actor,
+      targetType: 'employee',
+      targetId: employeeId,
+      details: { changedFields: ['permissions'], via: 'supervisor_team_management', seniorStaff: makeSenior },
+    });
+    websocketService.handleDataChangeNotification({
+      type: 'employee',
+      action: 'update',
+      data: { id: employeeId },
+      timestamp: new Date(),
+      employeeId: null,
+    });
+
+    res.json({ success: true, employeeId, isSeniorStaff: makeSenior, detachedReports });
+  } catch (error) {
+    debugError('❌ Error updating senior-staff designation:', error);
+    res.status(500).json({ error: error.message || 'Failed to update designation' });
+  }
+});
+
+/**
+ * Assign which Senior Staff each group member reports to (sets seniorStaffId). Accepts a batch:
+ * { assignments: [{ employeeId, seniorStaffId|null }, ...] }. Validates each target is in the
+ * supervisor's group and each chosen senior staff is in the group AND holds the senior-staff
+ * designation. Re-routes any of the staff member's in-flight (pending senior-staff) reports.
+ */
+router.patch('/api/supervisors/:supervisorId/group/assignments', async (req, res) => {
+  try {
+    if (!authorizeSupervisorScope(req, res)) return;
+    const actor = req.authenticatedEmployee;
+    const { supervisorId } = req.params;
+    const assignments = Array.isArray(req.body?.assignments) ? req.body.assignments : null;
+    if (!assignments || assignments.length === 0) {
+      return res.status(400).json({ error: 'assignments array is required' });
+    }
+
+    const db = dbService.getDb();
+    const nowIso = new Date().toISOString();
+
+    const groupRows = await allAsync(
+      db,
+      `SELECT id, name, preferredName, position, permissions, role, supervisorId, seniorStaffId
+       FROM employees
+       WHERE supervisorId = ? AND (archived IS NULL OR archived = 0)`,
+      [supervisorId]
+    );
+    const groupById = new Map(groupRows.map((r) => [r.id, r]));
+
+    const results = [];
+    for (const assignment of assignments) {
+      const employeeId = assignment?.employeeId;
+      const seniorStaffId = assignment?.seniorStaffId ? String(assignment.seniorStaffId) : null;
+
+      if (!employeeId) {
+        results.push({ employeeId: employeeId || null, ok: false, error: 'employeeId is required' });
+        continue;
+      }
+      const member = groupById.get(employeeId);
+      if (!member) {
+        results.push({ employeeId, ok: false, error: 'That employee is not in your group.' });
+        continue;
+      }
+      if (seniorStaffId) {
+        if (seniorStaffId === employeeId) {
+          results.push({ employeeId, ok: false, error: 'An employee cannot report to themselves.' });
+          continue;
+        }
+        if (seniorStaffId === supervisorId) {
+          results.push({ employeeId, ok: false, error: 'Senior Staff cannot be the Supervisor.' });
+          continue;
+        }
+        const senior = groupById.get(seniorStaffId);
+        if (!senior) {
+          results.push({ employeeId, ok: false, error: 'Chosen Senior Staff is not in your group.' });
+          continue;
+        }
+        if (!hasSeniorStaffDesignation(senior)) {
+          results.push({ employeeId, ok: false, error: 'Chosen person is not designated as Senior Staff.' });
+          continue;
+        }
+      }
+
+      await runAsync(db, 'UPDATE employees SET seniorStaffId = ?, updatedAt = ? WHERE id = ?', [seniorStaffId, nowIso, employeeId]);
+      member.seniorStaffId = seniorStaffId; // keep cache consistent within this batch
+      const reroutedReports = await rerouteInFlightSeniorStaffReports(db, employeeId);
+
+      logAuditEvent({
+        action: 'employee_sensitive_update',
+        actor,
+        targetType: 'employee',
+        targetId: employeeId,
+        details: { changedFields: ['seniorStaffId'], via: 'supervisor_team_management' },
+      });
+      websocketService.handleDataChangeNotification({
+        type: 'employee',
+        action: 'update',
+        data: { id: employeeId, seniorStaffId },
+        timestamp: new Date(),
+        employeeId: null,
+      });
+
+      results.push({ employeeId, ok: true, seniorStaffId, reroutedReports });
+    }
+
+    res.json({ success: true, results });
+  } catch (error) {
+    debugError('❌ Error updating team assignments:', error);
+    res.status(500).json({ error: error.message || 'Failed to update assignments' });
   }
 });
 

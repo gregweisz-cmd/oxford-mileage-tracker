@@ -53,8 +53,49 @@ function mergeLegacyDesignationsIntoPermissions(permissionsValue, position) {
   return Array.from(perms);
 }
 
+/** True when the employee holds the senior-staff designation (permission or legacy position). */
+function hasSeniorStaffDesignation(employee) {
+  if (!employee) return false;
+  const perms = parsePermissions(employee.permissions);
+  if (perms.includes('senior_staff')) return true;
+  const pos = String(employee.position || '');
+  return SENIOR_STAFF_SUFFIX.test(pos) || pos.toLowerCase().includes('senior staff');
+}
+
+/** True when the employee holds the supervisor designation (permission, role, or legacy position). */
+function hasSupervisorDesignation(employee) {
+  if (!employee) return false;
+  if (hasSeniorStaffDesignation(employee)) return false;
+  const perms = parsePermissions(employee.permissions);
+  if (perms.includes('supervisor')) return true;
+  if (employee.role === 'supervisor') return true;
+  const pos = String(employee.position || '');
+  const posLower = pos.toLowerCase();
+  return SUPERVISOR_SUFFIX.test(pos) || (posLower.includes('supervisor') && !posLower.includes('senior staff'));
+}
+
+/** Add a designation permission (and ensure 'staff' baseline). Returns a new array. */
+function addDesignationPermission(permissionsValue, designation) {
+  const perms = new Set(parsePermissions(permissionsValue));
+  perms.add(designation);
+  if (!perms.has('staff')) perms.add('staff');
+  return Array.from(perms);
+}
+
+/** Remove a designation permission. Returns a new array. */
+function removeDesignationPermission(permissionsValue, designation) {
+  const perms = new Set(parsePermissions(permissionsValue));
+  perms.delete(designation);
+  return Array.from(perms);
+}
+
 module.exports = {
+  parsePermissions,
   stripDesignationSuffixes,
   resolveHrSyncPosition,
   mergeLegacyDesignationsIntoPermissions,
+  hasSeniorStaffDesignation,
+  hasSupervisorDesignation,
+  addDesignationPermission,
+  removeDesignationPermission,
 };

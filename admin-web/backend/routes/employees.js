@@ -1145,7 +1145,7 @@ router.post('/api/employees/:id/clear-login-attempts', requireAnyRole(['admin'])
 /**
  * Get supervisor team
  */
-router.get('/api/supervisors/:supervisorId/team', (req, res) => {
+router.get('/api/supervisors/:supervisorId/team', requireAuth, (req, res) => {
   const { supervisorId } = req.params;
   const db = dbService.getDb();
 
@@ -1198,7 +1198,7 @@ router.get('/api/supervisors', (req, res) => {
 /**
  * Get senior staff team (employees who have this user as their senior staff)
  */
-router.get('/api/senior-staff/:seniorStaffId/team', (req, res) => {
+router.get('/api/senior-staff/:seniorStaffId/team', requireAuth, (req, res) => {
   const { seniorStaffId } = req.params;
   const db = dbService.getDb();
 

@@ -174,9 +174,8 @@ const SeniorStaffPortal: React.FC<SeniorStaffPortalProps> = ({ seniorStaffId, se
 
   const loadTeamMembers = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/senior-staff/${seniorStaffId}/team`);
-      if (!response.ok) throw new Error('Failed to load team members');
-      const data = await response.json();
+      const { apiGet } = await import('../services/rateLimitedApi');
+      const data = await apiGet<any[]>(`/api/senior-staff/${seniorStaffId}/team`);
       const mapped: Employee[] = data.map((member: any) => ({
         id: member.id,
         name: member.name,

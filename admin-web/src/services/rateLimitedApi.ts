@@ -320,6 +320,14 @@ export const apiPut = async <T = any>(url: string, data?: any): Promise<T> => {
   return response.json();
 };
 
+export const apiPatch = async <T = any>(url: string, data?: any): Promise<T> => {
+  const response = await rateLimitedApi.fetch(url, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+  return response.json();
+};
+
 export const apiDelete = async <T = any>(url: string): Promise<T> => {
   const response = await rateLimitedApi.fetch(url, { method: 'DELETE' });
   return response.json();
