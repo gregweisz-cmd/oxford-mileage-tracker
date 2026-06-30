@@ -686,10 +686,18 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     position: string;
     phoneNumber?: string;
     costCenters: string[];
-    previous?: { name?: string; position?: string; phoneNumber?: string; costCenters?: string[] };
+    preserveLocalEmail?: boolean;
+    localEmail?: string;
+    previous?: { name?: string; position?: string; phoneNumber?: string; costCenters?: string[]; email?: string };
   }): string => {
-    if (!u.previous) return `${u.position} · ${(u.costCenters || []).join(', ')}`;
     const changes: string[] = [];
+    if (u.preserveLocalEmail && u.localEmail) {
+      changes.push(`Local email kept: "${u.localEmail}" (HR has "${u.previous?.email || u.localEmail}")`);
+    }
+    if (!u.previous) {
+      if (changes.length > 0) return changes.join(' | ');
+      return `${u.position} · ${(u.costCenters || []).join(', ')}`;
+    }
     if ((u.previous.name || '') !== (u.name || '')) {
       changes.push(`Name: "${u.previous.name || '-'}" -> "${u.name || '-'}"`);
     }

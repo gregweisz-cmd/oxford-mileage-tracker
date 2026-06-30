@@ -31,6 +31,8 @@ The "Sync from HR API" button in Admin Portal → Employee Management calls `htt
 
 6. In Admin Portal, open the Employee Management tab and click **Sync from HR API**. If the token is set correctly, you’ll see a success message (e.g. “Synced X employees; Y created; Z updated; W archived (not in HR)”). HR is the source of truth: anyone not in the HR API is archived.
 
+**Local corrections:** If you fix an employee’s email spelling in Admin (e.g. `steven@` instead of HR’s `stevin@`), sync matches by HR Employee ID (`oxfordHouseId`) or a likely one-character email typo on the same name, so the corrected record is updated—not archived—and HR’s misspelled email is not imported as a duplicate.
+
 ## Render (production)
 
 1. Open your Render dashboard and select the backend service (e.g. Oxford Mileage Backend).
