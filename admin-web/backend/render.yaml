@@ -2,7 +2,7 @@ services:
   - type: web
     name: oxford-mileage-backend
     env: node
-    plan: free
+    plan: standard
     buildCommand: npm install
     startCommand: npm start
     envVars:

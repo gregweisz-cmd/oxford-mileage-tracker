@@ -16,7 +16,7 @@
    If the admin is on **Vercel**: Project → Settings → Environment Variables → set **`REACT_APP_API_URL`** = `https://[your-backend-url]` (no trailing slash). Redeploy the frontend after changing it.
 
 4. **Cold starts**  
-   On Render’s free tier the service spins down when idle. The first request after a while can take 30–60 seconds or time out; retry or wait for the instance to wake.
+   On Render’s **Starter** tier the service spins down when idle. The first request after a while can take 30–60 seconds or time out; retry or wait for the instance to wake. **Standard** stays always on with more RAM (2 GB) and CPU (1 vCPU).
 
 ---
 
