@@ -100,10 +100,9 @@ Ask your admin if you do not have access:
 |---|----------|--------|-----------------|
 | 5.1 | Camera capture | Add receipt via camera | Crop → save works |
 | 5.2 | Gallery | Add from photo library | Same flow works |
-| 5.3 | OCR / AI | Capture clear receipt | Vendor/amount/date suggested; editable |
+| 5.3 | Receipt image read | Take a clear photo of a receipt | App fills in vendor, amount, and date from the photo; you can change them before saving |
 | 5.4 | Low quality | Blurry or tiny image | Quality warning if score is low |
 | 5.5 | View list | Open Receipts for month | All receipts listed correctly |
-| 5.6 | No monthly PDF | Open Receipts page | **No** “Generate Monthly PDF” button |
 
 ---
 
@@ -131,7 +130,7 @@ Ask your admin if you do not have access:
 | 7.1 | Eligibility | Day with 8+ hrs and 100+ mi | Day shows eligible |
 | 7.2 | Claim amount | Enter per diem for eligible day | Respects daily cap and monthly limit |
 | 7.3 | Tiered rules | Employee on tiered cost center | Amount follows distance tier |
-| 7.4 | Receipt image | Center requires receipt image | Cannot save without image when required |
+| 7.4 | Receipt image required | **Only if your cost center requires it** (admin may turn this on for some testers): try to save per diem without a receipt photo | App blocks save until you add a receipt image; if your center does not require it, skip this test |
 | 7.5 | Save all | Save month’s per diem | Syncs to web; monthly total correct |
 | 7.6 | Accidental back | Scroll on Per Diem screen | Does not accidentally navigate away |
 
@@ -157,7 +156,7 @@ Ask your admin if you do not have access:
 | 9.2 | Vehicles | Add/edit vehicle | Available in mileage/GPS |
 | 9.3 | Data sync | Manual sync from Data Sync screen | Success; queue clears |
 | 9.4 | Notifications | Dismiss smart notification | Stays dismissed after refresh |
-| 9.5 | Offline | Enter data offline; reconnect | Syncs when online |
+| 9.5 | Offline sync test | Make a small edit in the app (for example, change a daily description). **Do not tap Sync yet.** Turn on **Airplane mode** for about 10 seconds. **Close the app completely** (swipe it away from recent apps). Open the app again. Turn **Airplane mode off**. Go to **Data Sync** and tap **Sync**. | Your edit is still there after you sync — nothing was lost |
 
 ---
 
@@ -379,12 +378,16 @@ Check each before wider release:
 
 ## Suggested test schedule
 
-| Week | Focus |
-|------|--------|
-| **Week 1** | Mobile (sections 1–9) + sync matrix (17) |
-| **Week 2** | Staff Portal (10) + regression (19) |
-| **Week 3** | Approval workflows (16) + Senior Staff / Supervisor / Finance (11–13) |
-| **Week 4** | Admin + HR sync (15) + Contracts (14) + edge cases (20) |
+**Read this first:** You do not have to finish everything in one day. Work through one week at a time. Each “section” is a numbered part of this document (for example, section 5 is Receipts). Mark each test **Pass**, **Fail**, or **Blocked**. If something breaks, write down what you did and tell Goose.
+
+| Week | What to do (plain English) |
+|------|----------------------------|
+| **Week 1** | **Use the phone app for everyday tasks.** Work through sections **1–9** (login, home screen, GPS trips, manual mileage, receipts, daily hours, per diem, My Flock, and settings). Then check section **17** (the sync table) to make sure phone data shows up on the website. |
+| **Week 2** | **Use the Staff Portal on your computer.** Do section **10** (build and save your expense report on the web). Also run section **19** (the regression checklist — quick checks that recent fixes still work). |
+| **Week 3** | **Test the approval chain.** Do section **16** (full approval workflows with different people playing staff, supervisor, finance, etc.). Also test sections **11–13** (Senior Staff, Supervisor, and Finance portals). |
+| **Week 4** | **Admin and special cases.** If you have admin access, do section **15** (employees and HR sync). Test section **14** (Contracts portal, read-only). Finish with section **20** (edge cases — weird situations like month boundaries). |
+
+**Tip:** If a step confuses you, skip it, note **Blocked**, and **Contact Goose**. Do not guess and do not spend an hour stuck on one line.
 
 ---
 
@@ -403,4 +406,4 @@ Check each before wider release:
 
 ---
 
-*Oxford House, Inc. — internal beta testing document. Questions: contact your test coordinator.*
+*Oxford House, Inc. — internal beta testing document. Questions or problems: **Contact Goose**.*
