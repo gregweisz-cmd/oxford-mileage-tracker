@@ -1290,31 +1290,12 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       drawCell(centersStartX, yPos, centersTotalWidth, cellHeight, 'GRAND TOTAL', 'darkBlue', 'white', 'center');
       drawCell(grandTotalValueX, yPos, subtotalColWidth, cellHeight, `$${totalExpenses.toFixed(2)}`, 'lightBlue', 'black', 'left');
       
-      yPos += 40;
+      yPos += cellHeight + 16;
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      
-      // Start "Payable to" and cost center sheets on a fresh page
-      // Calculate estimated space needed for first cost center (title + table header + at least a few rows)
-      const estimatedCostCenterHeight = 100 + 30 + 200; // title + header + rows estimate
-      const remainingSpaceForCC = pageHeight - yPos - margin;
-      
-      debugLog(`📄 Before cost center section: yPos=${yPos}, pageHeight=${pageHeight}, remaining=${remainingSpaceForCC.toFixed(0)}`);
-      // Only add page if we don't have enough space for the cost center content
-      if (remainingSpaceForCC < estimatedCostCenterHeight) {
-        debugLog(`📄 Adding page for cost center section (remaining space ${remainingSpaceForCC.toFixed(0)} < ${estimatedCostCenterHeight})`);
-        doc.addPage();
-        yPos = margin + 20;
-      } else {
-        // Continue on same page, just add some spacing
-        yPos += 20;
-        debugLog(`📄 Cost center section continuing on same page (remaining space ${remainingSpaceForCC.toFixed(0)}px, added spacing, yPos=${yPos})`);
-      }
-      debugLog(`📄 After cost center page check: yPos=${yPos}`);
-      
       safeText(`Payable to: ${reportData.name || 'N/A'}`, margin, yPos);
       yPos += 30;
-      debugLog(`📄 After "Payable to": yPos=${yPos}`);
+      debugLog(`📄 After summary + Payable to: yPos=${yPos}`);
       
       
       // Page 3+: Cost Center Travel Sheets (with all days of month and grid)
@@ -2061,12 +2042,32 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         
         // Table dimensions for Cost Center sheet (landscape — all expense columns)
         const ccCellHeight = 12;
-        const ccColWidths = [42, 130, 32, 38, 38, 32, 38, 38, 38, 38, 38, 38, 38];
         const ccHeaders = [
           'Date', 'Description/Activity', 'Hours', 'Odometer Start', 'Odometer End', 'Miles', 'Mileage ($)',
           'Air / Rail / Bus', 'Vehicle Rental / Fuel', 'Parking / Tolls', 'Ground Transport',
           'Lodging', 'Per Diem ($)'
         ];
+        const ccMinColWidths = [36, 72, 26, 32, 32, 26, 32, 32, 32, 32, 32, 32, 32];
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        const ccHeaderPadding = 10;
+        const ccColWidths = (() => {
+          const preferred = ccHeaders.map((header, i) =>
+            Math.max(ccMinColWidths[i], doc.getTextWidth(header) + ccHeaderPadding)
+          );
+          const usableWidth = ccPageWidth - margin * 2;
+          const preferredTotal = preferred.reduce((sum, w) => sum + w, 0);
+          const widths = [...preferred];
+          if (preferredTotal < usableWidth) {
+            widths[1] += usableWidth - preferredTotal;
+            return widths;
+          }
+          if (preferredTotal > usableWidth) {
+            const scale = usableWidth / preferredTotal;
+            return widths.map((w, i) => Math.max(ccMinColWidths[i], w * scale));
+          }
+          return widths;
+        })();
         
         // Calculate total table width and center it on the page
         const totalTableWidth = ccColWidths.reduce((sum, width) => sum + width, 0);
@@ -2158,7 +2159,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         // Header row - calculate dynamic height based on longest header
         let maxHeaderHeight = ccCellHeight;
         ccHeaders.forEach((header, i) => {
-          if (header.length > 20) {
+          if (doc.getTextWidth(header) > ccColWidths[i] - ccHeaderPadding) {
             // Use the same calculation as drawCCCell for consistency
             const maxCharsPerLine = Math.floor((ccColWidths[i] - 6) / 3.5); // 6px padding, ~3.5px per character at size 6
             
@@ -2346,7 +2347,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             // Draw header row AFTER titles
             let ccXPos = ccTableStartX;
             ccHeaders.forEach((header, i) => {
-              const needsWrapping = header.length > 20;
+              const needsWrapping = doc.getTextWidth(header) > ccColWidths[i] - ccHeaderPadding;
               drawCCCell(ccXPos, yPos, ccColWidths[i], maxHeaderHeight, header, 'darkBlue', 'white', 'center', needsWrapping);
               ccXPos += ccColWidths[i];
             });
@@ -2569,16 +2570,6 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             debugLog(`📊 About to draw rows for ${costCenter}`);
             debugLog(`📊 Variables: yPos=${yPos}, daysInMonth=${daysInMonth}, month=${month}, year=${year}`);
             debugLog(`📊 Drawing rows for ${costCenter}, yPos before loop: ${yPos}, daysIn readable: ${daysInMonth}`);
-            
-            // Draw header row first
-            let headerXPos = ccTableStartX;
-            ccHeaders.forEach((header, i) => {
-              const headerColor = 'lightBlue'; // Header row background
-              drawCCCell(headerXPos, yPos, ccColWidths[i], ccCellHeight, header, headerColor, 'black', 'left', false);
-              headerXPos += ccColWidths[i];
-            });
-            yPos += ccCellHeight;
-            debugLog(`📊 Drew header row, yPos now: ${yPos}`);
         
         // Generate rows for all days of the month
             let rowsDrawn = 0;
