@@ -9,13 +9,17 @@ import {
   List,
   ListItem,
   ListItemText,
+  Paper,
   TextField,
   Typography,
   CircularProgress,
+  Divider,
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import {
   Delete as DeleteIcon,
   Add as AddIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { debugError } from '../config/debug';
 import {
@@ -93,6 +97,7 @@ function resolveFlockHouse(row: FlockHouseRow, houses: OxfordHouseRow[]): Oxford
 }
 
 const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseAddress = '' }) => {
+  const theme = useTheme();
   const [flockRows, setFlockRows] = useState<FlockHouseRow[]>([]);
   const [oxfordHouses, setOxfordHouses] = useState<OxfordHouseRow[]>([]);
   const [availableStates, setAvailableStates] = useState<string[]>([]);
@@ -100,6 +105,26 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const flockPanelSx = {
+    p: 2,
+    borderRadius: 2,
+    border: '1px solid',
+    borderColor: 'divider',
+    bgcolor:
+      theme.palette.mode === 'dark'
+        ? alpha(theme.palette.primary.main, 0.12)
+        : alpha(theme.palette.primary.main, 0.06),
+    borderLeft: `4px solid ${theme.palette.primary.main}`,
+  } as const;
+
+  const searchPanelSx = {
+    p: 2,
+    borderRadius: 2,
+    border: '1px solid',
+    borderColor: 'divider',
+    bgcolor: 'background.paper',
+  } as const;
 
   const loadFlock = useCallback(async () => {
     const response = await fetch(
@@ -257,123 +282,194 @@ const MyFlockManagement: React.FC<MyFlockManagementProps> = ({ employeeId, baseA
           <span role="img" aria-label="sheep">🐑</span>
           Manage My Flock
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
           Pin Oxford Houses you visit often. Your flock syncs to the mobile app for quick location picking during GPS and manual mileage entry.
         </Typography>
 
-        <TextField
-          fullWidth
-          size="small"
-          label="Search Oxford Houses to add"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          sx={{ mb: 1 }}
-          disabled={loading || saving}
-        />
-
-        {availableStates.length > 0 ? (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2, alignItems: 'center' }}>
-            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
-              Filter by state:
+        {/* —— Saved flock —— */}
+        <Paper elevation={0} sx={{ ...flockPanelSx, mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              My Flock
             </Typography>
             <Chip
-              label="All States"
               size="small"
-              onClick={() => setSelectedState('')}
-              color={!selectedState ? 'primary' : 'default'}
-              variant={!selectedState ? 'filled' : 'outlined'}
+              label={loading ? '…' : `${flockRows.length} ${flockRows.length === 1 ? 'house' : 'houses'}`}
+              color="primary"
+              variant="outlined"
             />
-            {availableStates.map((state) => (
-              <Chip
-                key={state}
-                label={state}
-                size="small"
-                onClick={() => setSelectedState(state)}
-                color={selectedState === state ? 'primary' : 'default'}
-                variant={selectedState === state ? 'filled' : 'outlined'}
-              />
-            ))}
           </Box>
-        ) : null}
-
-        {searchResults.length > 0 ? (
-          <List dense sx={{ mb: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-            {searchResults.map((house) => (
-              <ListItem
-                key={house.id}
-                secondaryAction={
-                  <Button
-                    size="small"
-                    startIcon={<AddIcon />}
-                    onClick={() => void handleAdd(house)}
-                    disabled={saving}
-                  >
-                    Add
-                  </Button>
-                }
-              >
-                <ListItemText
-                  primary={house.name}
-                  secondary={formatHouseAddress(house)}
-                />
-              </ListItem>
-            ))}
-          </List>
-        ) : !loading ? (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {searchQuery.trim()
-              ? `No matching houses${selectedState ? ` in ${selectedState}` : ''} (or already in your flock).`
-              : selectedState
-                ? `No houses available in ${selectedState} to add. Try All States or another filter.`
-                : 'Search above to find Oxford Houses to add.'}
+            Houses you have pinned. These appear in the mobile app and mileage location picker.
           </Typography>
-        ) : null}
 
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-            <CircularProgress size={28} />
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : flockRows.length === 0 ? (
+            <Box
+              sx={{
+                py: 3,
+                px: 2,
+                textAlign: 'center',
+                borderRadius: 1,
+                border: '1px dashed',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+              }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                Your flock is empty. Use the search section below to add Oxford Houses.
+              </Typography>
+            </Box>
+          ) : (
+            <List dense disablePadding sx={{ maxHeight: 320, overflowY: 'auto' }}>
+              {sortedFlockRows.map((row) => {
+                const house = row.resolvedHouse || houseById.get(row.oxfordHouseId) || null;
+                return (
+                  <ListItem
+                    key={row.id}
+                    sx={{
+                      border: 1,
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      mb: 1,
+                      bgcolor: 'background.paper',
+                    }}
+                    secondaryAction={
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => void handleRemove(row)}
+                        disabled={saving}
+                        aria-label={`Remove ${house?.name || 'house'} from flock`}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    }
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <span role="img" aria-label="sheep">🐑</span>
+                          <span>{house?.name || 'Oxford House'}</span>
+                        </Box>
+                      }
+                      secondary={
+                        house
+                          ? formatHouseAddress(house)
+                          : `Could not match house record (${row.oxfordHouseId})`
+                      }
+                    />
+                  </ListItem>
+                );
+              })}
+            </List>
+          )}
+        </Paper>
+
+        <Divider sx={{ mb: 3 }} />
+
+        {/* —— Search & add —— */}
+        <Paper elevation={0} sx={searchPanelSx}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <SearchIcon fontSize="small" color="action" />
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Add Oxford Houses
+            </Typography>
           </Box>
-        ) : flockRows.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
-            Your flock is empty. Search above to add Oxford Houses.
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Search the directory and tap Add to pin a house to your flock.
           </Typography>
-        ) : (
-          <List dense>
-            {sortedFlockRows.map((row) => {
-              const house = row.resolvedHouse || houseById.get(row.oxfordHouseId) || null;
-              return (
+
+          <TextField
+            fullWidth
+            size="small"
+            label="Search by name, city, or address"
+            placeholder="e.g. OH 11th Street or Raleigh"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            sx={{ mb: 1.5 }}
+            disabled={loading || saving}
+          />
+
+          {availableStates.length > 0 ? (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2, alignItems: 'center' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+                Filter by state:
+              </Typography>
+              <Chip
+                label="All States"
+                size="small"
+                onClick={() => setSelectedState('')}
+                color={!selectedState ? 'primary' : 'default'}
+                variant={!selectedState ? 'filled' : 'outlined'}
+              />
+              {availableStates.map((state) => (
+                <Chip
+                  key={state}
+                  label={state}
+                  size="small"
+                  onClick={() => setSelectedState(state)}
+                  color={selectedState === state ? 'primary' : 'default'}
+                  variant={selectedState === state ? 'filled' : 'outlined'}
+                />
+              ))}
+            </Box>
+          ) : null}
+
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : searchResults.length > 0 ? (
+            <List
+              dense
+              sx={{
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1,
+                maxHeight: 280,
+                overflowY: 'auto',
+                bgcolor:
+                  theme.palette.mode === 'dark'
+                    ? alpha(theme.palette.common.white, 0.03)
+                    : 'grey.50',
+              }}
+            >
+              {searchResults.map((house) => (
                 <ListItem
-                  key={row.id}
-                  sx={{ border: 1, borderColor: 'divider', borderRadius: 1, mb: 1 }}
+                  key={house.id}
+                  divider
                   secondaryAction={
-                    <IconButton
+                    <Button
                       size="small"
-                      color="error"
-                      onClick={() => void handleRemove(row)}
+                      startIcon={<AddIcon />}
+                      onClick={() => void handleAdd(house)}
                       disabled={saving}
                     >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                      Add
+                    </Button>
                   }
                 >
                   <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <span role="img" aria-label="sheep">🐑</span>
-                        <span>{house?.name || 'Oxford House'}</span>
-                      </Box>
-                    }
-                    secondary={
-                      house
-                        ? formatHouseAddress(house)
-                        : `Could not match house record (${row.oxfordHouseId})`
-                    }
+                    primary={house.name}
+                    secondary={formatHouseAddress(house)}
                   />
                 </ListItem>
-              );
-            })}
-          </List>
-        )}
+              ))}
+            </List>
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+              {searchQuery.trim()
+                ? `No matching houses${selectedState ? ` in ${selectedState}` : ''} (or already in your flock).`
+                : selectedState
+                  ? `No houses available in ${selectedState} to add. Try All States or another filter.`
+                  : 'Type in the search box to find Oxford Houses to add.'}
+            </Typography>
+          )}
+        </Paper>
       </CardContent>
     </Card>
   );

@@ -164,6 +164,45 @@ function isPdfReceiptUri(uri: string | undefined): boolean {
   return noQuery.endsWith('.pdf');
 }
 
+function classifyReceiptUploadFile(file: File): { isPdf: boolean; isImage: boolean } {
+  const fileName = (file.name || '').toLowerCase();
+  const fileExt = fileName.includes('.') ? fileName.split('.').pop() || '' : '';
+  const mime = (file.type || '').toLowerCase();
+  const isPdf = mime === 'application/pdf' || fileExt === 'pdf';
+  const isImage =
+    mime.startsWith('image/') ||
+    ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif'].includes(fileExt);
+  return { isPdf, isImage };
+}
+
+function readReceiptUploadAsDataUrl(file: File): Promise<{ dataUrl: string; fileType: 'pdf' | 'image' }> {
+  return new Promise((resolve, reject) => {
+    const { isPdf, isImage } = classifyReceiptUploadFile(file);
+    if (!isPdf && !isImage) {
+      reject(new Error('INVALID_TYPE'));
+      return;
+    }
+    const fileName = (file.name || '').toLowerCase();
+    const fileExt = fileName.includes('.') ? fileName.split('.').pop() || '' : '';
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      let result = e.target?.result as string;
+      if (typeof result === 'string' && result.startsWith('data:application/octet-stream;base64,')) {
+        if (isPdf) {
+          result = result.replace('data:application/octet-stream;base64,', 'data:application/pdf;base64,');
+        } else {
+          const fallbackMime =
+            fileExt === 'heif' ? 'image/heif' : fileExt === 'heic' ? 'image/heic' : 'image/jpeg';
+          result = result.replace('data:application/octet-stream;base64,', `data:${fallbackMime};base64,`);
+        }
+      }
+      resolve({ dataUrl: result, fileType: isPdf ? 'pdf' : 'image' });
+    };
+    reader.onerror = () => reject(new Error('READ_FAILED'));
+    reader.readAsDataURL(file);
+  });
+}
+
 /** Load receipt bytes — web uploads often store PDFs as data URLs in the DB, not /uploads/ files. */
 async function fetchReceiptFileBlob(
   raw: string,
@@ -3950,30 +3989,10 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   // Handle receipt image upload
   const handleReceiptImageUpload = async (receiptId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    const fileName = (file?.name || '').toLowerCase();
-    const fileExt = fileName.includes('.') ? fileName.split('.').pop() || '' : '';
-    const mime = (file?.type || '').toLowerCase();
-    const isPdfUpload = mime === 'application/pdf' || fileExt === 'pdf';
-    const isImageUpload =
-      mime.startsWith('image/') ||
-      ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif'].includes(fileExt);
-
-    if (file && (isImageUpload || isPdfUpload)) {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        let result = e.target?.result as string;
-        // Some HEIC/HEIF files selected from desktop can come through as octet-stream.
-        // Normalize MIME in the data URL so backend/client can treat it as an image.
-        if (typeof result === 'string' && result.startsWith('data:application/octet-stream;base64,')) {
-          if (isPdfUpload) {
-            result = result.replace('data:application/octet-stream;base64,', 'data:application/pdf;base64,');
-          } else {
-            const fallbackMime = fileExt === 'heif' ? 'image/heif' : (fileExt === 'heic' ? 'image/heic' : 'image/jpeg');
-            result = result.replace('data:application/octet-stream;base64,', `data:${fallbackMime};base64,`);
-          }
-        }
+    if (!file) return;
+    try {
+      const { dataUrl: result, fileType: uploadedFileType } = await readReceiptUploadAsDataUrl(file);
         // Update the receipt with the new file
-        const uploadedFileType: 'pdf' | 'image' = isPdfUpload ? 'pdf' : 'image';
         const updatedReceipts: ReceiptData[] = receipts.map(receipt =>
           receipt.id === receiptId 
             ? { ...receipt, imageUri: result, fileType: uploadedFileType }
@@ -4006,11 +4025,46 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         } catch (error) {
           debugError('Error saving receipt image:', error);
         }
-      };
-      reader.readAsDataURL(file);
-    } else {
-      alert('Please upload an image file (including HEIC/HEIF) or PDF.');
+    } catch (error) {
+      if (error instanceof Error && error.message === 'INVALID_TYPE') {
+        alert('Please upload an image file (including HEIC/HEIF) or PDF.');
+      } else {
+        debugError('Error reading receipt file:', error);
+        alert('Could not read the selected file. Please try again.');
+      }
+    } finally {
+      event.target.value = '';
     }
+  };
+
+  const handleReceiptDialogImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !editingReceipt) return;
+    try {
+      const { dataUrl, fileType } = await readReceiptUploadAsDataUrl(file);
+      setEditingReceipt({ ...editingReceipt, imageUri: dataUrl, fileType });
+      if (editingReceipt.id) {
+        setReceiptImageLoadErrors((prev) => {
+          const next = new Set(prev);
+          next.delete(editingReceipt.id);
+          return next;
+        });
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message === 'INVALID_TYPE') {
+        alert('Please upload an image file (including HEIC/HEIF) or PDF.');
+      } else {
+        debugError('Error reading receipt file:', error);
+        alert('Could not read the selected file. Please try again.');
+      }
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleReceiptDialogRemoveImage = () => {
+    if (!editingReceipt) return;
+    setEditingReceipt({ ...editingReceipt, imageUri: '', fileType: 'image' });
   };
 
   const handleRemoveReceiptPhoto = async (receiptId: string) => {
@@ -9613,7 +9667,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           }
         }}
       >
-        <DialogTitle>{editingReceipt ? 'Edit Receipt' : 'Add Receipt'}</DialogTitle>
+        <DialogTitle>{editingReceipt?.id ? 'Edit Receipt' : 'Add Receipt'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <FormDatePicker
@@ -9689,6 +9743,72 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                 ))}
               </Select>
             </FormControl>
+
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Receipt image
+              </Typography>
+              {editingReceipt?.imageUri ? (
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 1.5 }}>
+                  {editingReceipt.fileType === 'pdf' || isPdfReceiptUri(editingReceipt.imageUri) ? (
+                    <Chip icon={<CheckCircleIcon />} label="PDF attached" color="success" variant="outlined" />
+                  ) : (
+                    <Box
+                      component="img"
+                      src={getReceiptImageUrl(editingReceipt.imageUri)}
+                      alt="Receipt preview"
+                      sx={{
+                        maxWidth: 160,
+                        maxHeight: 120,
+                        objectFit: 'contain',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        bgcolor: 'background.paper',
+                      }}
+                    />
+                  )}
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<UploadIcon />}
+                      onClick={() => document.getElementById('receipt-dialog-image-input')?.click()}
+                    >
+                      Change image
+                    </Button>
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="outlined"
+                      startIcon={<DeleteIcon />}
+                      onClick={handleReceiptDialogRemoveImage}
+                    >
+                      Remove image
+                    </Button>
+                  </Box>
+                </Box>
+              ) : (
+                <Button
+                  variant="outlined"
+                  startIcon={<UploadIcon />}
+                  onClick={() => document.getElementById('receipt-dialog-image-input')?.click()}
+                  sx={{ mb: 0.5 }}
+                >
+                  Add image
+                </Button>
+              )}
+              <Typography variant="caption" color="text.secondary" display="block">
+                Optional — image, HEIC/HEIF, or PDF
+              </Typography>
+              <input
+                type="file"
+                accept="image/*,.heic,.heif,application/pdf"
+                style={{ display: 'none' }}
+                id="receipt-dialog-image-input"
+                onChange={(e) => void handleReceiptDialogImageSelect(e)}
+              />
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -9726,7 +9846,9 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                     vendor: editingReceipt.vendor,
                     description: editingReceipt.description || '',
                     category: editingReceipt.category,
-                    costCenter: (editingReceipt as any).costCenter || employeeData.costCenters[0] || ''
+                    costCenter: (editingReceipt as any).costCenter || employeeData.costCenters[0] || '',
+                    imageUri: editingReceipt.imageUri || '',
+                    fileType: editingReceipt.fileType || (isPdfReceiptUri(editingReceipt.imageUri) ? 'pdf' : 'image'),
                   };
                   
                   if (editingReceipt.id && !editingReceipt.id.startsWith('receipt-')) {
