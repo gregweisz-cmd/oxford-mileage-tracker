@@ -16,6 +16,7 @@ import {
   shouldShowMobileWebNotice,
 } from './utils/mobileDetection';
 import { resetStaffPortalSessionExpiredDispatch } from './services/staffPortalSessionExpired';
+import { darkPortalPalette } from './theme/darkPalette';
 import { stickyTableThemeComponents } from './theme/stickyTableTheme';
 import { scrollableThemeComponents } from './theme/scrollableTheme';
 
@@ -154,14 +155,18 @@ const createAppTheme = (mode: 'light' | 'dark') => {
           main: '#2BB673', // Brand green
         },
         background: {
-          default: '#1e1e1e', // Dark grey background
-          paper: '#2d2d2d', // Slightly lighter grey for cards/paper
+          default: darkPortalPalette.background.default,
+          paper: darkPortalPalette.background.paper,
         },
         text: {
-          primary: '#e0e0e0', // Light grey text
-          secondary: '#b0b0b0', // Medium grey text
+          primary: darkPortalPalette.text.primary,
+          secondary: darkPortalPalette.text.secondary,
         },
-        divider: '#404040', // Dark grey divider
+        divider: darkPortalPalette.divider,
+        action: {
+          hover: darkPortalPalette.action.hover,
+          selected: darkPortalPalette.action.selected,
+        },
       },
       typography: {
         fontFamily: '"Myriad Pro", "Segoe UI", Arial, sans-serif',
@@ -171,33 +176,33 @@ const createAppTheme = (mode: 'light' | 'dark') => {
         ...scrollableThemeComponents,
         MuiCard: {
           styleOverrides: {
-            root: {
-              backgroundColor: '#2d2d2d',
-            },
+            root: ({ theme }) => ({
+              backgroundColor: theme.palette.background.paper,
+            }),
           },
         },
         MuiPaper: {
           styleOverrides: {
-            root: {
-              backgroundColor: '#2d2d2d',
-            },
+            root: ({ theme }) => ({
+              backgroundColor: theme.palette.background.paper,
+            }),
           },
         },
         MuiAppBar: {
           styleOverrides: {
-            root: {
-              backgroundColor: '#2d2d2d',
-            },
+            root: ({ theme }) => ({
+              backgroundColor: theme.palette.background.paper,
+            }),
           },
         },
         MuiDrawer: {
           styleOverrides: {
-            paper: {
-              backgroundColor: '#2d2d2d',
+            paper: ({ theme }) => ({
+              backgroundColor: theme.palette.background.paper,
               scrollbarGutter: 'stable',
               overflowY: 'scroll',
               overflowX: 'auto',
-            },
+            }),
           },
         },
       },

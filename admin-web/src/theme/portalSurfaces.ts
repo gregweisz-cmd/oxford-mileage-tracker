@@ -9,7 +9,7 @@ export const portalNoteBoxSx: SxProps<Theme> = (theme) => ({
   borderRadius: 1,
   bgcolor:
     theme.palette.mode === 'dark'
-      ? alpha(theme.palette.common.white, 0.06)
+      ? theme.palette.background.paper
       : theme.palette.grey[50],
 });
 
@@ -67,7 +67,7 @@ export const portalInfoBoxSx: SxProps<Theme> = (theme) => ({
   borderRadius: 1,
   bgcolor:
     theme.palette.mode === 'dark'
-      ? alpha(theme.palette.common.white, 0.06)
+      ? theme.palette.background.paper
       : theme.palette.grey[50],
 });
 

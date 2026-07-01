@@ -2644,12 +2644,25 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           (expenseData as any).holidayHours = holidayHours;
           (expenseData as any).ptoHours = ptoHours;
           (expenseData as any).receipts = currentMonthReceipts;
-          // Set employeeSignature from saved expense report or signature state
+          const isNewMonthReport = expenseReportResponse.status === 404;
+          const shouldAutoApplyProfileSignature =
+            isNewMonthReport &&
+            !!employee.signature &&
+            !supervisorMode &&
+            !financeMode &&
+            !isAdminView;
+          const autoAppliedSignatureDate = shouldAutoApplyProfileSignature
+            ? formatSignatureDateStamp()
+            : null;
+          // Set employeeSignature from saved report, auto-applied profile sig (new month), or in-session state
           (expenseData as any).employeeSignature =
             savedExpenseReport?.reportData?.signatureImage ||
             savedExpenseReport?.reportData?.employeeSignature ||
-            signatureImage ||
+            (shouldAutoApplyProfileSignature ? employee.signature : signatureImage) ||
             null;
+          if (autoAppliedSignatureDate) {
+            (expenseData as any).employeeSignatureDate = autoAppliedSignatureDate;
+          }
           // Set employeeCertificationAcknowledged from saved expense report or current state
           (expenseData as any).employeeCertificationAcknowledged = savedExpenseReport?.reportData?.employeeCertificationAcknowledged || employeeCertificationAcknowledged || false;
           
@@ -2673,9 +2686,28 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             (expenseData as any).receipts = currentMonthReceipts;
             setDailyDescriptionsWithRef(dailyDescriptions);
             
-            // Profile signature is available for "Upload saved" but is not applied to the report automatically
+            // Profile signature for "Upload saved"; also auto-applied to new draft months (certification checkbox still required)
             if (employee.signature) {
               setSavedSignature(employee.signature);
+            }
+            if (shouldAutoApplyProfileSignature) {
+              setSignatureImage(employee.signature);
+              setEmployeeSignatureDate(autoAppliedSignatureDate);
+              try {
+                await syncExpenseReportToSource({
+                  employeeId: effectiveEmployeeId,
+                  month: currentMonth,
+                  year: currentYear,
+                  reportData: {
+                    ...expenseData,
+                    employeeSignature: employee.signature,
+                    employeeSignatureDate: autoAppliedSignatureDate,
+                    employeeCertificationAcknowledged: false,
+                  },
+                });
+              } catch (autoSigError) {
+                debugWarn('Could not auto-apply profile signature to new month report:', autoSigError);
+              }
             }
             
             // Refresh timesheet data immediately using the data we just loaded
