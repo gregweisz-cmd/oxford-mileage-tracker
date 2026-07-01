@@ -14,6 +14,7 @@ import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import { SupervisorManagement } from './SupervisorManagement';
 import { SystemSettings } from './SystemSettings';
 import { AuditLogViewer } from './AuditLogViewer';
+import { NotificationControlTab } from './NotificationControlTab';
 import { GpsTripInvestigationTab } from './GpsTripInvestigationTab';
 import { TravelReasonsManagement } from './TravelReasonsManagement';
 import { DailyDescriptionOptionsManagement } from './DailyDescriptionOptionsManagement';
