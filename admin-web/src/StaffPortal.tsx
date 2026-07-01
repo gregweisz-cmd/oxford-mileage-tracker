@@ -5,6 +5,16 @@ import { debugLog, debugError, debugWarn, debugVerbose } from './config/debug';
 
 // Material-UI components for spreadsheet-like interface
 import {
+  portalCertificationBoxSx,
+  portalInfoBoxSx,
+  portalNoteBoxSx,
+  portalRevisionNoteSx,
+  portalSignatureFrameSx,
+  portalSignaturePadSx,
+  portalTableCellBorderSx,
+  signatureEditButtonSx,
+} from './theme/portalSurfaces';
+import {
   Container,
   Card,
   CardContent,
@@ -573,7 +583,7 @@ const COST_CENTER_TRAVEL_TABLE_SX = {
   borderCollapse: 'separate',
   borderSpacing: 0,
   width: '100%',
-  '& td, & th': { border: '1px solid #ccc' },
+  '& td, & th': portalTableCellBorderSx,
 } as const;
 const COST_CENTER_TRAVEL_CONTAINER_SX = {
   width: '100%',
@@ -581,7 +591,7 @@ const COST_CENTER_TRAVEL_CONTAINER_SX = {
   ...STICKY_SCROLLABLE_TABLE_CONTAINER_SX,
 } as const;
 const costCenterTravelHeaderSx = {
-  border: '1px solid #ccc',
+  ...portalTableCellBorderSx,
   p: 0.5,
   whiteSpace: 'normal',
   wordBreak: 'break-word',
@@ -599,7 +609,7 @@ const costCenterTravelCol = {
   expense: { width: '6.5%' },
   perDiem: { width: '6.5%' },
 } as const;
-const costCenterTravelBodyCellSx = { border: '1px solid #ccc', p: 0.5 } as const;
+const costCenterTravelBodyCellSx = { ...portalTableCellBorderSx, p: 0.5 } as const;
 const costCenterTravelBodyDescSx = { ...costCenterTravelBodyCellSx, wordWrap: 'break-word', overflowWrap: 'anywhere' } as const;
 
 /** Renders the cost center travel table from pre-built rows (from buildCostCenterRows). */
@@ -6497,7 +6507,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             Please review and update the flagged items, then resubmit your report.
           </Typography>
           {revisionNotes.length > 0 && (
-            <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'warning.50', borderRadius: 1, border: '1px solid', borderColor: 'warning.light' }}>
+            <Box sx={{ mt: 1.5, ...portalRevisionNoteSx }}>
               <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Supervisor requested the following changes:
               </Typography>
@@ -6576,7 +6586,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               </Box>
             </Box>
 
-            <Box sx={{ mt: 6, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: 'grey.50' }}>
+            <Box sx={{ mt: 6, ...portalNoteBoxSx }}>
               <Typography variant="body2" color="error" sx={{ mb: 2 }} component="div">
                 <strong>* Note:</strong> Signature also required on Summary Sheet & Timesheet
               </Typography>
@@ -6587,7 +6597,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
             </Box>
 
             {/* Certification Statement */}
-            <Box sx={{ mt: 4, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#fff0f5' }}>
+            <Box sx={{ mt: 4, ...portalCertificationBoxSx }}>
               <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }} component="div">
                 By signing and submitting this report to Oxford House, Inc., I certify under penalty of perjury that the pages herein document genuine, valid, and necessary expenditures, as well as an accurate record of my time and travel on behalf of Oxford House, Inc.
               </Typography>
@@ -6644,15 +6654,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               <Typography variant="h6" gutterBottom component="div"><strong>Signatures of Approval:</strong></Typography>
               <Box sx={{ display: 'flex', gap: 4 }}>
                 <Box sx={{ flex: 1 }}>
-                  <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1 }}>
+                  <Box sx={portalSignatureFrameSx}>
                     <Typography variant="body1" component="div"><strong>Employee Signature</strong></Typography>
                     <Box sx={{ 
                       mt: 2, 
                       mb: 2, 
                       minHeight: 40, 
-                      border: '1px solid #ccc', 
-                      borderRadius: 1,
-                      bgcolor: 'white',
+                      ...portalSignaturePadSx,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -6677,8 +6685,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                               position: 'absolute', 
                               top: 4, 
                               right: 4, 
-                              bgcolor: 'white',
-                              '&:hover': { bgcolor: 'grey.100' }
+                              ...signatureEditButtonSx,
                             }}
                           >
                             <EditIcon fontSize="small" />
@@ -6707,15 +6714,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </Box>
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                  <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1 }}>
+                  <Box sx={portalSignatureFrameSx}>
                     <Typography variant="body1" component="div"><strong>Direct Supervisor</strong></Typography>
                     <Box sx={{ 
                       mt: 2, 
                       mb: 2, 
                       minHeight: 40, 
-                      border: '1px solid #ccc', 
-                      borderRadius: 1,
-                      bgcolor: 'white',
+                      ...portalSignaturePadSx,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -6741,8 +6746,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                 position: 'absolute', 
                                 top: 4, 
                                 right: 4, 
-                                bgcolor: 'white',
-                                '&:hover': { bgcolor: 'grey.100' }
+                                ...signatureEditButtonSx,
                               }}
                             >
                               <EditIcon fontSize="small" />
@@ -6810,15 +6814,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </Box>
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                  <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1 }}>
+                  <Box sx={portalSignatureFrameSx}>
                     <Typography variant="body1" component="div"><strong>Finance Department</strong></Typography>
                     <Box sx={{
                       mt: 2,
                       mb: 2,
                       minHeight: 40,
-                      border: '1px solid #ccc',
-                      borderRadius: 1,
-                      bgcolor: 'white',
+                      ...portalSignaturePadSx,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -6836,7 +6838,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             <IconButton
                               size="small"
                               onClick={() => setFinanceSignatureDialogOpen(true)}
-                              sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'white', '&:hover': { bgcolor: 'grey.100' } }}
+                              sx={{ position: 'absolute', top: 4, right: 4, ...signatureEditButtonSx }}
                             >
                               <EditIcon fontSize="small" />
                             </IconButton>
@@ -6938,7 +6940,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: 'grey.50' }}>
+                  <TableRow sx={{ bgcolor: (theme) => (theme.palette.mode === 'dark' ? 'action.hover' : 'grey.50') }}>
                     <TableCell sx={{ width: '30%', textAlign: 'left' }}></TableCell>
                     <TableCell align="center" sx={{ width: '14%' }}>{employeeData.costCenters[0]}</TableCell>
                     {employeeData.costCenters.length > 1 && (
@@ -7416,15 +7418,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   </Typography>
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                  <Box sx={{ border: '1px solid #ccc', p: 2, borderRadius: 1, minHeight: 80 }}>
+                  <Box sx={{ ...portalSignatureFrameSx, minHeight: 80 }}>
                     <Typography variant="body1"><strong>Signature:</strong></Typography>
                     <Box sx={{ 
                       mt: 1, 
                       mb: 2, 
                       minHeight: 40, 
-                      border: '1px solid #ccc', 
-                      borderRadius: 1,
-                      bgcolor: 'white',
+                      ...portalSignaturePadSx,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -8350,7 +8350,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               </Box>
             </Box>
 
-            <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+            <Box sx={{ mb: 3, ...portalInfoBoxSx }}>
               <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
               <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
                 * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
@@ -8539,7 +8539,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
                 </Box>
               </Box>
-              <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Box sx={{ mb: 3, ...portalInfoBoxSx }}>
                 <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
                 <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
                   * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
@@ -8568,7 +8568,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
                 </Box>
               </Box>
-              <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Box sx={{ mb: 3, ...portalInfoBoxSx }}>
                 <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
                 <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
                   * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
@@ -8597,7 +8597,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
                 </Box>
               </Box>
-              <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Box sx={{ mb: 3, ...portalInfoBoxSx }}>
                 <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
                 <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
                   * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
@@ -8626,7 +8626,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   <Typography variant="h6" component="div"><strong>Date Completed:</strong> {employeeData.dateCompleted}</Typography>
                 </Box>
               </Box>
-              <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Box sx={{ mb: 3, ...portalInfoBoxSx }}>
                 <Typography variant="h6" gutterBottom component="div"><strong>Mileage Rate:</strong> $0.445</Typography>
                 <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
                   * Enter your mileage entries and daily descriptions on the Mileage and Daily Descriptions tabs respectively.
@@ -8664,9 +8664,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   mb: 2, 
                   minHeight: 40, 
                   width: 200,
-                  border: '1px solid #ccc', 
-                  borderRadius: 1,
-                  bgcolor: 'white',
+                  ...portalSignaturePadSx,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -8707,9 +8705,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                   mb: 2,
                   minHeight: 40,
                   width: 200,
-                  border: '1px solid #ccc',
-                  borderRadius: 1,
-                  bgcolor: 'white',
+                  ...portalSignaturePadSx,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -8735,8 +8731,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                             position: 'absolute',
                             top: 4,
                             right: 4,
-                            bgcolor: 'white',
-                            '&:hover': { bgcolor: 'grey.100' },
+                            ...signatureEditButtonSx,
                           }}
                         >
                           <EditIcon fontSize="small" />
@@ -9502,7 +9497,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               </Table>
             </TableContainer>
 
-            <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+            <Box sx={{ mt: 3, ...portalInfoBoxSx }}>
               <Typography variant="h6" gutterBottom>
                 Receipt Summary
               </Typography>
