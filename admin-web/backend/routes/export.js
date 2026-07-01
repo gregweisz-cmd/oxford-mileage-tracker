@@ -27,6 +27,8 @@ const { jsPDF } = require('jspdf');
 const { PDFDocument } = require('pdf-lib');
 const googleMapsService = require('../services/googleMapsService');
 const { requireAuth } = require('../middleware/auth');
+const { prepareReceiptImageForPdf, drawCenteredReceiptImage } = require('../utils/pdfReceiptImage');
+const { renderAllCostCenterMaps } = require('../utils/pdfMapRenderer');
 
 router.use('/api/export', requireAuth);
 
@@ -1293,7 +1295,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       yPos += cellHeight + 16;
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      safeText(`Payable to: ${reportData.name || 'N/A'}`, margin, yPos);
+      safeText(`Payable to: ${reportData.name || 'N/A'}`, pageWidth / 2, yPos, { align: 'center' });
       yPos += 30;
       debugLog(`📄 After summary + Payable to: yPos=${yPos}`);
       
@@ -1669,7 +1671,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             });
             
             lines.forEach((line, index) => {
-              safeText(line, x + 3, y + 6 + (index * 6));
+              safeText(line, x + width / 2, y + 6 + (index * 6), { align: 'center' });
             });
             
             return 6 + (lines.length * 6) + 6;
@@ -1768,94 +1770,35 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             
             yPos += maxRowHeight;
 
-            // Collect receipt images to render after the table (rawUri may be from DB when snapshot had none)
-            if (rawUri) {
-              try {
-                const imagePath = rawUri;
-                const fs = require('fs');
-                const path = require('path');
-                
-                // Use config.upload.directory (e.g. /data/uploads on Render persistent disk)
-                const uploadsDir = config.upload.directory;
-                if (typeof imagePath === 'string' && imagePath.startsWith('data:image/')) {
-                  const base64Data = imagePath.split(',')[1];
-                  const format = imagePath.includes('png') ? 'PNG' : 'JPEG';
-                  imagesToAdd.push({ type: 'base64', data: base64Data, format, receipt });
-                } else if (typeof imagePath === 'string' && imagePath.startsWith('data:application/pdf')) {
-                  const base64Data = imagePath.split(',')[1];
-                  if (base64Data) pdfsToEmbed.push({ type: 'base64', data: base64Data });
-                } else {
-                  let cleanPath = imagePath;
-                  if (typeof imagePath === 'string' && imagePath.startsWith('file://')) {
-                    cleanPath = imagePath.replace(/^file:\/\//, '');
-                  }
-                  let fullImagePath = null;
-                  if (typeof cleanPath === 'string' && cleanPath.startsWith('/uploads/')) {
-                    fullImagePath = path.join(uploadsDir, path.basename(cleanPath));
-                  } else if (path.isAbsolute(cleanPath)) {
-                    fullImagePath = cleanPath;
-                  } else {
-                    const uploadsPath = path.join(uploadsDir, cleanPath);
-                    const uploadsSubPath = path.join(uploadsDir, 'test-receipts', cleanPath);
-                    const hashPath = path.join(uploadsDir, path.basename(cleanPath));
-                    const receiptsPath = path.join(__dirname, '..', 'receipts', cleanPath);
-                    if (fs.existsSync(uploadsPath)) fullImagePath = uploadsPath;
-                    else if (fs.existsSync(uploadsSubPath)) fullImagePath = uploadsSubPath;
-                    else if (fs.existsSync(hashPath)) fullImagePath = hashPath;
-                    else if (fs.existsSync(receiptsPath)) fullImagePath = receiptsPath;
-                    else {
-                      const filename = path.basename(cleanPath);
-                      const filenamePath = path.join(uploadsDir, filename);
-                      if (fs.existsSync(filenamePath)) fullImagePath = filenamePath;
-                    }
-                  }
-                  if (fullImagePath && fs.existsSync(fullImagePath)) {
-                    const ext = (path.extname(fullImagePath) || '').toLowerCase();
-                    if (ext === '.pdf') {
-                      pdfsToEmbed.push({ type: 'file', path: fullImagePath });
-                    } else {
-                      const format = ext === '.png' ? 'PNG' : 'JPEG';
-                      imagesToAdd.push({ type: 'file', path: fullImagePath, format, receipt });
-                    }
-                  } else {
-                    const triedPaths = [
-                      path.isAbsolute(cleanPath) ? cleanPath : path.join(uploadsDir, cleanPath),
-                      path.join(uploadsDir, 'test-receipts', cleanPath),
-                      path.join(uploadsDir, path.basename(cleanPath)),
-                      path.join(__dirname, '..', 'receipts', cleanPath)
-                    ];
-                    debugLog(`⚠️ Receipt image not found for receipt ${idx + 1}:`);
-                    debugLog(`   Original path: ${imagePath}`);
-                    debugLog(`   Cleaned path: ${cleanPath}`);
-                    debugLog(`   Tried paths: ${triedPaths.join(', ')}`);
-                    // Fallback: if DB has a data-URL image for this receipt, use it so the PDF still gets the image
-                    const fallbackUri = dbRec && dbRec.imageUri && typeof dbRec.imageUri === 'string' ? dbRec.imageUri : null;
-                    if (fallbackUri && fallbackUri.startsWith('data:image/')) {
-                      const base64Data = fallbackUri.split(',')[1];
-                      if (base64Data) {
-                        const format = fallbackUri.includes('png') ? 'PNG' : 'JPEG';
-                        imagesToAdd.push({ type: 'base64', data: base64Data, format, receipt });
-                        debugLog(`   Using DB imageUri (data URL) for receipt ${idx + 1}`);
-                      }
-                    } else if (fallbackUri && fallbackUri.startsWith('data:application/pdf')) {
-                      const base64Data = fallbackUri.split(',')[1];
-                      if (base64Data) pdfsToEmbed.push({ type: 'base64', data: base64Data });
-                      debugLog(`   Using DB imageUri (PDF data URL) for receipt ${idx + 1}`);
-                    }
-                  }
+            // Collect receipt images to render after the table
+            const imageUrisToTry = [];
+            for (const r of rowCandidates) {
+              const dbRow = r?.id ? dbReceiptsById.get(r.id) : null;
+              for (const uri of [r?.imagePath, r?.imageUrl, r?.image, r?.imageUri, dbRow?.imageUri]) {
+                const normalized = String(uri || '').trim();
+                if (normalized && !imageUrisToTry.includes(normalized)) {
+                  imageUrisToTry.push(normalized);
                 }
-              } catch (imageError) {
-                debugError(`❌ Error preparing receipt image for receipt ${idx + 1}:`, imageError);
               }
+            }
+            let preparedImage = null;
+            for (const uri of imageUrisToTry) {
+              preparedImage = prepareReceiptImageForPdf(uri);
+              if (preparedImage) break;
+            }
+            if (preparedImage?.kind === 'image') {
+              imagesToAdd.push({ ...preparedImage, receipt });
+            } else if (preparedImage?.kind === 'pdf') {
+              pdfsToEmbed.push({ type: 'base64', data: preparedImage.base64 });
+            } else if (imageUrisToTry.length > 0) {
+              debugLog(`⚠️ Receipt ${idx + 1}: could not resolve image from ${imageUrisToTry.length} URI(s)`);
             }
           });
           debugLog(`📄 Receipt media: ${imagesToAdd.length} image(s) to render, ${pdfsToEmbed.length} PDF(s) to embed`);
           // After table, render each receipt image one per page at full readable size
           if (imagesToAdd.length > 0) {
             const receiptCaptionY = margin + 16;
-            const maxDrawWidth = pageWidth - margin * 2;
-            const maxDrawHeight = pageHeight - margin * 2 - 40;
-            imagesToAdd.forEach((img, i) => {
+            imagesToAdd.forEach((img) => {
               doc.addPage();
               doc.setFontSize(14);
               doc.setFont('helvetica', 'bold');
@@ -1868,28 +1811,33 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 if (caption) safeText(caption, pageWidth / 2, receiptCaptionY + 14, { align: 'center' });
               }
               const imgY = receiptCaptionY + 28;
-              const drawWidth = maxDrawWidth;
-              const drawHeight = maxDrawHeight;
-              const imgX = margin;
-              try {
-                if (img.type === 'placeholder') {
-                  doc.setFillColor(240, 240, 240);
-                  doc.rect(imgX, imgY, drawWidth, drawHeight, 'F');
-                  doc.setFontSize(10);
-                  doc.text(img.label || 'Receipt', imgX + drawWidth / 2, imgY + drawHeight / 2, { align: 'center' });
-                } else if (img.type === 'base64') {
-                  const format = img.format || 'JPEG';
-                  doc.addImage(img.data, format, imgX, imgY, drawWidth, drawHeight, undefined, 'FAST');
-                } else {
-                  const format = img.format || 'JPEG';
-                  doc.addImage(img.path, format, imgX, imgY, drawWidth, drawHeight, undefined, 'FAST');
-                }
-              } catch (e) {
-                debugError('❌ Error drawing receipt image:', e);
+              const drew = drawCenteredReceiptImage(doc, img, { pageWidth, pageHeight, margin, startY: imgY });
+              if (!drew) {
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'italic');
+                safeText('(Receipt image could not be loaded)', pageWidth / 2, imgY + 24, { align: 'center' });
               }
             });
           }
           debugLog(`📄 Receipts section completed: yPos=${yPos}`);
+
+          // Route maps last (after travel logs, timesheet, and receipts).
+          if (pendingMapContexts.length > 0) {
+            await renderAllCostCenterMaps(doc, pendingMapContexts, {
+            margin,
+            pageWidth,
+            pageHeight,
+            safeText,
+            mapViewMode,
+            isFinanceUser,
+            isCostCenterMapsEnabled,
+            getBaseAddressLabel,
+            abbreviateForDisplay,
+            isExplicitlyBaseAddress,
+            normalizeMileageEntryForPdfMaps,
+            formatMapDateForPdf
+            });
+          }
         }
         
         // Generate filename matching Staff Portal format
@@ -2031,6 +1979,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       }; // Close generateTimesheetAndFinalizePDF function
       
       let carryForwardOdometer = null;
+      const pendingMapContexts = [];
       const MILEAGE_RATE = 0.445;
       const perDiemByDate = buildPerDiemByDate(reportData.dailyEntries, reportData.receipts);
       const processCostCenterSheet = (costCenter, index, onComplete, baseAddress, baseAddress2) => {
@@ -2645,7 +2594,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           
           rowData.forEach((data, i) => {
             const cellColor = i === 0 ? 'lightBlue' : 'white'; // Date column in light blue
-            const textAlign = 'left'; // All data left-aligned
+            const textAlign = i === 1 ? 'left' : 'center';
             const shouldWrap = i === 1 && descriptionNeedsWrapping; // Wrap description column if needed
                 
                 // Debug: Log first few cells with data
@@ -2667,295 +2616,20 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         yPos += 25;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
-            safeText(`Total Miles: ${Math.round(totalMiles)}`, margin, yPos);
+            safeText(`Total Miles: ${Math.round(totalMiles)}`, ccPageWidth / 2, yPos, { align: 'center' });
         yPos += 18;
-            safeText(`Total Hours: ${totalHours.toFixed(1)}`, margin, yPos);
+            safeText(`Total Hours: ${totalHours.toFixed(1)}`, ccPageWidth / 2, yPos, { align: 'center' });
         yPos += 18;
-            safeText(`Total Amount: $${totalAmount.toFixed(2)}`, margin, yPos);
+            safeText(`Total Amount: $${totalAmount.toFixed(2)}`, ccPageWidth / 2, yPos, { align: 'center' });
             
-            // Generate Google Maps if enabled and user is finance
-            (async () => {
-              try {
-                const userIsFinance = isFinanceUser();
-                const mapsEnabled = await isCostCenterMapsEnabled(costCenter);
-                const apiConfigured = googleMapsService.isConfigured();
-                const effectiveMapViewMode = mapViewMode || (userIsFinance && mapsEnabled ? 'day' : null);
-                
-                debugLog(`🗺️ Map generation check for ${costCenter}:`);
-                debugLog(`   - User is finance: ${userIsFinance}`);
-                debugLog(`   - Maps enabled for cost center: ${mapsEnabled}`);
-                debugLog(`   - API configured: ${apiConfigured}`);
-                debugLog(`   - Map view mode: ${effectiveMapViewMode || 'none'}`);
-                debugLog(`   - Mileage entries count: ${mileageEntries?.length || 0}`);
-                
-                if (!userIsFinance) {
-                  debugLog(`⚠️ Maps skipped: User is not finance team`);
-                  console.warn(`Maps skipped: User is not finance team (cost center: ${costCenter})`);
-                } else if (!mapsEnabled) {
-                  debugLog(`⚠️ Maps skipped: Cost center ${costCenter} does not have maps enabled`);
-                  console.warn(`Maps skipped: Cost center "${costCenter}" does not have maps enabled`);
-                } else if (!apiConfigured) {
-                  debugLog(`⚠️ Maps skipped: Google Maps API key not configured`);
-                  console.warn('Maps skipped: Google Maps API key not configured');
-                } else if (!effectiveMapViewMode) {
-                  debugLog(`⚠️ Maps skipped: No map view mode specified`);
-                  console.warn('Maps skipped: No map view mode specified');
-                }
-                
-                if (userIsFinance && mapsEnabled && apiConfigured && effectiveMapViewMode) {
-                  debugLog(`🗺️ Generating Google Maps for cost center: ${costCenter}, mode: ${effectiveMapViewMode}`);
-                  console.log(`Generating Google Maps for cost center: ${costCenter}, mode: ${effectiveMapViewMode}`);
-                  // Log sample of mileage entry map data for debugging (no PII beyond addresses)
-                  if (mileageEntries && mileageEntries.length > 0) {
-                    const sample = mileageEntries[0];
-                    const mapDataSample = {
-                      entriesCount: mileageEntries.length,
-                      first: {
-                        startLocationLat: sample.startLocationLat,
-                        startLocationLng: sample.startLocationLng,
-                        endLocationLat: sample.endLocationLat,
-                        endLocationLng: sample.endLocationLng,
-                        startAddress: (sample.startLocationAddress || sample.startLocationName || sample.startLocation || '').slice(0, 60),
-                        endAddress: (sample.endLocationAddress || sample.endLocationName || sample.endLocation || '').slice(0, 60)
-                      }
-                    };
-                    debugLog('🗺️ Mileage map data sample:', JSON.stringify(mapDataSample));
-                    console.log('Map data sample:', JSON.stringify(mapDataSample));
-                  }
-                  
-                  // mapViewMode: 'day' = one map per trip, grouped by calendar day; 'costCenter' = one map per trip for the whole CC (chronological)
-                  if (effectiveMapViewMode === 'costCenter') {
-                    let biasLatLng = null;
-                    if (baseAddress) {
-                      biasLatLng = await googleMapsService.geocodeToLatLng(baseAddress);
-                    }
-                    const sortedCcEntries = [...(entriesForCostCenter || [])]
-                      .map((e) => normalizeMileageEntryForPdfMaps(e, baseAddress, baseAddress2))
-                      .sort((a, b) => new Date(a.createdAt || a.date).getTime() - new Date(b.createdAt || b.date).getTime());
-
-                    debugLog(`🗺️ Cost center per-trip mode: ${sortedCcEntries.length} mileage entries (one map per trip when route data exists)`);
-
-                    for (let tripIndex = 0; tripIndex < sortedCcEntries.length; tripIndex++) {
-                      const entry = sortedCcEntries[tripIndex];
-                      const tripRoutes = googleMapsService.collectRoutesForDay([entry]);
-                      if (tripRoutes.length === 0) {
-                        debugLog(`🗺️ Skipping map for CC entry ${tripIndex + 1}: no valid start/end for static map`);
-                        continue;
-                      }
-                      const singleRoute = [tripRoutes[0]];
-                      const tripNum = tripIndex + 1;
-                      const tripStartAddr = entry.startLocationAddress || '';
-                      const tripEndAddr = entry.endLocationAddress || '';
-                      const startLabel = getBaseAddressLabel(tripStartAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripStartAddr);
-                      const endLabel = getBaseAddressLabel(tripEndAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripEndAddr);
-                      const nameFromLoc = (loc) => (loc && typeof loc === 'string' && loc.includes('(')) ? loc.replace(/\s*\([^)]*\)\s*$/, '').trim() : '';
-                      const startName = entry.startLocationName || nameFromLoc(entry.startLocation) || '';
-                      const endName = entry.endLocationName || nameFromLoc(entry.endLocation) || '';
-                      const withName = (name, addr) => (!name || !String(name).trim()) ? (addr || '—') : (addr ? `${String(name).trim()} (${addr})` : String(name).trim());
-                      const startBA = getBaseAddressLabel(tripStartAddr, baseAddress, baseAddress2);
-                      const endBA = getBaseAddressLabel(tripEndAddr, baseAddress, baseAddress2);
-                      const isStartBase = startBA || isExplicitlyBaseAddress(entry, 'start', baseAddress, baseAddress2);
-                      const isEndBase = endBA || isExplicitlyBaseAddress(entry, 'end', baseAddress, baseAddress2);
-                      const baseAddrForDisplay = (ba) => abbreviateForDisplay(ba === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''));
-                      const startDisplay = isStartBase ? `BA (${baseAddrForDisplay(startBA || 'BA')})` : withName(startName, startLabel);
-                      const endDisplay = isEndBase ? `BA (${baseAddrForDisplay(endBA || 'BA')})` : withName(endName, endLabel);
-                      try {
-                        const mapResult = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400', biasLatLng });
-                        const mapImage = Buffer.isBuffer(mapResult) ? mapResult : mapResult.imageBuffer;
-                        const tripSummary = Buffer.isBuffer(mapResult) ? null : mapResult.tripSummary;
-                        const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
-                        doc.addPage();
-                        yPos = margin + 16;
-                        doc.setFontSize(10);
-                        doc.setFont('helvetica', 'normal');
-                        const mapRowMaxWidth = pageWidth - margin * 2;
-                        const mapLineHeight = 12;
-                        const drawMapRow = (text) => {
-                          const lines = doc.splitTextToSize(text, mapRowMaxWidth);
-                          lines.forEach((line) => { doc.text(line, margin, yPos); yPos += mapLineHeight; });
-                        };
-                        drawMapRow(`Cost Center Routes - ${costCenter} (Trip ${tripNum} of ${sortedCcEntries.length})`);
-                        drawMapRow(`Date: ${formatMapDateForPdf(entry.date) || '—'}`);
-                        drawMapRow(`Cost Center: ${costCenter || '—'}`);
-                        drawMapRow(`Starting Location: ${startDisplay || '—'}`);
-                        drawMapRow(`Ending Location: ${endDisplay || '—'}`);
-                        drawMapRow(`Miles Driven (Tracked by GPS): ${entry.miles != null && entry.miles !== '' ? String(entry.miles) : '—'}`);
-                        yPos += 6;
-                        const imageWidth = pageWidth - (margin * 2);
-                        const imageHeight = (imageWidth * 400) / 600;
-                        doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);
-                        yPos += imageHeight + 12;
-                        if (tripSummary && (tripSummary.distanceText || tripSummary.durationText)) {
-                          doc.setFontSize(9);
-                          doc.setFont('helvetica', 'normal');
-                          const tripLine = [tripSummary.distanceText, tripSummary.durationText].filter(Boolean).join(' · ');
-                          if (tripLine) { safeText(tripLine, margin, yPos); yPos += 10; }
-                        }
-                        yPos += 8;
-                      } catch (mapError) {
-                        debugError(`❌ Error generating map for cost center ${costCenter} trip ${tripNum}:`, mapError);
-                        doc.addPage();
-                        yPos = margin + 16;
-                        doc.setFontSize(10);
-                        doc.setFont('helvetica', 'normal');
-                        const mapRowMaxWidthErr = pageWidth - margin * 2;
-                        const mapLineHeightErr = 12;
-                        const drawMapRowErr = (text) => {
-                          const lines = doc.splitTextToSize(text, mapRowMaxWidthErr);
-                          lines.forEach((line) => { doc.text(line, margin, yPos); yPos += mapLineHeightErr; });
-                        };
-                        drawMapRowErr(`Cost Center Routes - ${costCenter} (Trip ${tripNum} of ${sortedCcEntries.length})`);
-                        drawMapRowErr(`Date: ${formatMapDateForPdf(entry.date) || '—'}`);
-                        drawMapRowErr(`Cost Center: ${costCenter || '—'}`);
-                        drawMapRowErr(`Starting Location: ${startDisplay || '—'}`);
-                        drawMapRowErr(`Ending Location: ${endDisplay || '—'}`);
-                        drawMapRowErr(`Miles Driven (Tracked by GPS): ${entry.miles != null && entry.miles !== '' ? String(entry.miles) : '—'}`);
-                        yPos += 6;
-                        const placeholderH = 120;
-                        doc.setDrawColor(200, 200, 200);
-                        doc.setLineWidth(0.5);
-                        doc.rect(margin, yPos, pageWidth - margin * 2, placeholderH);
-                        yPos += placeholderH / 2 - 8;
-                        doc.setFontSize(11);
-                        doc.setFont('helvetica', 'normal');
-                        safeText('Map could not be generated for this trip.', pageWidth / 2, yPos, { align: 'center' });
-                        yPos += 14;
-                        safeText('Please add the route map manually.', pageWidth / 2, yPos, { align: 'center' });
-                        yPos += placeholderH / 2 - 6 + 8;
-                      }
-                    }
-
-                    onComplete();
-                    return;
-                  } else if (effectiveMapViewMode === 'day') {
-                    // Day mode: one map per trip (one page per mileage entry), zoomed to that route
-                    const entriesByDate = {};
-                    mileageEntries.forEach(entry => {
-                      const dateKey = entry.date.split('T')[0] || entry.date.split(' ')[0];
-                      if (!entriesByDate[dateKey]) {
-                        entriesByDate[dateKey] = [];
-                      }
-                      entriesByDate[dateKey].push(entry);
-                    });
-                    
-                    debugLog(`🗺️ Grouped ${mileageEntries.length} entries into ${Object.keys(entriesByDate).length} days`);
-                    
-                    // Generate one map per route; use fullest address for geocoding and substitute BA with base address
-                    let biasLatLng = null;
-                    if (baseAddress) {
-                      biasLatLng = await googleMapsService.geocodeToLatLng(baseAddress);
-                    }
-                    const sortedDates = Object.keys(entriesByDate).sort();
-                    for (const date of sortedDates) {
-                      const dayEntries = (entriesByDate[date] || []).map((entry) =>
-                        normalizeMileageEntryForPdfMaps(entry, baseAddress, baseAddress2)
-                      );
-                      const dayRoutes = googleMapsService.collectRoutesForDay(dayEntries);
-                      debugLog(`🗺️ Day ${date}: Found ${dayRoutes.length} routes (one map per route)`);
-                      if (dayRoutes.length === 0) {
-                        console.warn(`Maps skipped: No map points for date ${date} (cost center: ${costCenter})`);
-                      }
-                      for (let tripIndex = 0; tripIndex < dayRoutes.length; tripIndex++) {
-                        const singleRoute = [dayRoutes[tripIndex]];
-                        const tripNum = tripIndex + 1;
-                        const entry = dayEntries[tripIndex];
-                        const tripStartAddr = entry.startLocationAddress || '';
-                        const tripEndAddr = entry.endLocationAddress || '';
-                        const startLabel = getBaseAddressLabel(tripStartAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripStartAddr);
-                        const endLabel = getBaseAddressLabel(tripEndAddr, baseAddress, baseAddress2) || abbreviateForDisplay(tripEndAddr);
-                        const nameFromLoc = (loc) => (loc && typeof loc === 'string' && loc.includes('(')) ? loc.replace(/\s*\([^)]*\)\s*$/, '').trim() : '';
-                        const startName = entry.startLocationName || nameFromLoc(entry.startLocation) || '';
-                        const endName = entry.endLocationName || nameFromLoc(entry.endLocation) || '';
-                        const withName = (name, addr) => (!name || !String(name).trim()) ? (addr || '—') : (addr ? `${String(name).trim()} (${addr})` : String(name).trim());
-                        const startBA = getBaseAddressLabel(tripStartAddr, baseAddress, baseAddress2);
-                        const endBA = getBaseAddressLabel(tripEndAddr, baseAddress, baseAddress2);
-                        const isStartBase = startBA || isExplicitlyBaseAddress(entry, 'start', baseAddress, baseAddress2);
-                        const isEndBase = endBA || isExplicitlyBaseAddress(entry, 'end', baseAddress, baseAddress2);
-                        const baseAddrForDisplay = (ba) => abbreviateForDisplay(ba === 'BA2' ? (baseAddress2 || '') : (baseAddress || ''));
-                        const startDisplay = isStartBase ? `BA (${baseAddrForDisplay(startBA || 'BA')})` : withName(startName, startLabel);
-                        const endDisplay = isEndBase ? `BA (${baseAddrForDisplay(endBA || 'BA')})` : withName(endName, endLabel);
-                        try {
-                          const mapResult = await googleMapsService.downloadStaticMapImageFromRoutes(singleRoute, { size: '600x400', biasLatLng });
-                          const mapImage = Buffer.isBuffer(mapResult) ? mapResult : mapResult.imageBuffer;
-                          const tripSummary = Buffer.isBuffer(mapResult) ? null : mapResult.tripSummary;
-                          const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
-                          doc.addPage();
-                          yPos = margin + 16;
-                          doc.setFontSize(10);
-                          doc.setFont('helvetica', 'normal');
-                          const mapRowMaxWidth = pageWidth - margin * 2;
-                          const mapLineHeight = 12;
-                          const drawMapRow = (text) => {
-                            const lines = doc.splitTextToSize(text, mapRowMaxWidth);
-                            lines.forEach((line) => { doc.text(line, margin, yPos); yPos += mapLineHeight; });
-                          };
-                          drawMapRow(`Date: ${formatMapDateForPdf(entry.date) || '—'}`);
-                          drawMapRow(`Cost Center: ${costCenter || '—'}`);
-                          drawMapRow(`Starting Location: ${startDisplay || '—'}`);
-                          drawMapRow(`Ending Location: ${endDisplay || '—'}`);
-                          drawMapRow(`Miles Driven (Tracked by GPS): ${entry.miles != null && entry.miles !== '' ? String(entry.miles) : '—'}`);
-                          yPos += 6;
-                          const imageWidth = pageWidth - (margin * 2);
-                          const imageHeight = (imageWidth * 400) / 600;
-                          doc.addImage(imageDataUrl, 'PNG', margin, yPos, imageWidth, imageHeight);
-                          yPos += imageHeight + 12;
-                          if (tripSummary && (tripSummary.distanceText || tripSummary.durationText)) {
-                            doc.setFontSize(9);
-                            doc.setFont('helvetica', 'normal');
-                            const tripLine = [tripSummary.distanceText, tripSummary.durationText].filter(Boolean).join(' · ');
-                            if (tripLine) { safeText(tripLine, margin, yPos); yPos += 10; }
-                          }
-                          yPos += 8;
-                        } catch (mapError) {
-                          debugError(`❌ Error generating map for date ${date} trip ${tripNum}:`, mapError);
-                          doc.addPage();
-                          yPos = margin + 16;
-                          doc.setFontSize(10);
-                          doc.setFont('helvetica', 'normal');
-                          const mapRowMaxWidthErr = pageWidth - margin * 2;
-                          const mapLineHeightErr = 12;
-                          const drawMapRowErr = (text) => {
-                            const lines = doc.splitTextToSize(text, mapRowMaxWidthErr);
-                            lines.forEach((line) => { doc.text(line, margin, yPos); yPos += mapLineHeightErr; });
-                          };
-                          drawMapRowErr(`Date: ${formatMapDateForPdf(entry.date) || '—'}`);
-                          drawMapRowErr(`Cost Center: ${costCenter || '—'}`);
-                          drawMapRowErr(`Starting Location: ${startDisplay || '—'}`);
-                          drawMapRowErr(`Ending Location: ${endDisplay || '—'}`);
-                          drawMapRowErr(`Miles Driven (Tracked by GPS): ${entry.miles != null && entry.miles !== '' ? String(entry.miles) : '—'}`);
-                          yPos += 6;
-                          const placeholderH = 120;
-                          doc.setDrawColor(200, 200, 200);
-                          doc.setLineWidth(0.5);
-                          doc.rect(margin, yPos, pageWidth - margin * 2, placeholderH);
-                          yPos += placeholderH / 2 - 8;
-                          doc.setFontSize(11);
-                          doc.setFont('helvetica', 'normal');
-                          safeText('Map could not be generated for this trip.', pageWidth / 2, yPos, { align: 'center' });
-                          yPos += 14;
-                          safeText('Please add the route map manually.', pageWidth / 2, yPos, { align: 'center' });
-                          yPos += placeholderH / 2 - 6 + 8;
-                        }
-                      }
-                    }
-                    
-                    // Skip the cost center map if we did daily maps
-                    onComplete();
-                    return;
-                  } else {
-                    debugLog(`⚠️ mapViewMode "${effectiveMapViewMode}" is not "costCenter" or "day"; skipping maps`);
-                  }
-                } else {
-                  debugLog(`⚠️ Map generation conditions not met for ${costCenter}`);
-                }
-              } catch (error) {
-                debugError('❌ Error in map generation:', error);
-                debugError('❌ Error details:', error.message, error.stack);
-              }
-              
-              // This cost center sheet is complete, call the callback to process the next one
-              onComplete();
-            })();
+            pendingMapContexts.push({
+              costCenter,
+              mileageEntries: mileageEntries || [],
+              entriesForCostCenter,
+              baseAddress,
+              baseAddress2
+            });
+            onComplete();
             }); // Close timeTrackingQuery callback
             }); // Close receiptsQuery callback
           }); // Close dailyDescriptionsQuery callback
