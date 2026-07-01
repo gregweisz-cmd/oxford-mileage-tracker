@@ -51,6 +51,8 @@ import {
 } from '../utils/gpsLocationMatch';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { dismissKeyboardForSelection } from '../utils/formInteraction';
+import { hapticMedium } from '../utils/haptics';
+import { showGpsTripOptionsAlert } from '../utils/gpsTripOptionsAlert';
 import { useEndTripFlow } from '../hooks/useEndTripFlow';
 import {
   executeEndTripSave,
@@ -165,6 +167,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     currentDistance,
     startTracking,
     stopTracking,
+    requestStopTracking,
     registerEndTripFlowHandler,
     setShouldShowEndLocationModal,
     clearEndTripUiState,
@@ -1320,9 +1323,15 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     void startGpsTracking(normalized);
   };
 
-  const handleStopTracking = async () => {
-    // Match "start GPS" UX: prompt end-location options first instead of jumping to manual capture.
-    openEndLocationOptions();
+  const handleStopTrackingPress = () => {
+    void hapticMedium();
+    showGpsTripOptionsAlert({
+      tripPaused,
+      currentDistance,
+      onResume: () => void resumeTrip(),
+      onPause: () => void pauseTrip(),
+      onEndAndSave: () => requestStopTracking(),
+    });
   };
 
   const handleEndLocationOption = (
@@ -2075,10 +2084,19 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                 </TouchableOpacity>
                 <Text style={styles.trackingActiveSubtext}>
                   {tripPaused
-                    ? 'When you\'re driving again on this trip, tap Resume mileage. Stop Tracking ends the trip and saves.'
-                    : 'Use Stop Tracking (top-right) or the GPS chip to end your trip and save'}
+                    ? 'When you\'re driving again on this trip, tap Resume mileage. Stop Tracking below ends the trip and saves.'
+                    : 'Tap Stop Tracking below to end your trip and save'}
                 </Text>
               </View>
+              <TouchableOpacity
+                style={[styles.stopButton, styles.stopButtonBelowCard]}
+                onPress={handleStopTrackingPress}
+                accessibilityRole="button"
+                accessibilityLabel="Stop tracking"
+              >
+                <MaterialIcons name="stop" size={24} color="#fff" />
+                <Text style={styles.stopButtonText}>Stop Tracking</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -2910,8 +2928,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
+  stopButtonBelowCard: {
+    alignSelf: 'stretch',
+    maxWidth: 340,
+    width: '100%',
+    marginTop: 12,
+  },
   trackingActiveContainer: {
     alignItems: 'center',
+    width: '100%',
   },
   trackingActiveCard: {
     backgroundColor: '#e8f5e8',

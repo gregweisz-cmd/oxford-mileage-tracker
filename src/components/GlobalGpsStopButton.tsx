@@ -4,13 +4,13 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGpsTracking } from '../contexts/GpsTrackingContext';
 import { useNavigation } from '@react-navigation/native';
 import { hapticMedium } from '../utils/haptics';
+import { formatGpsTripDistance, showGpsTripOptionsAlert } from '../utils/gpsTripOptionsAlert';
 
 interface GlobalGpsStopButtonProps {
   currentRouteName?: string;
@@ -18,51 +18,31 @@ interface GlobalGpsStopButtonProps {
 
 export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopButtonProps) {
   const insets = useSafeAreaInsets();
-  const { isTracking, tripPaused, pauseTrip, resumeTrip, currentDistance, requestStopTracking } =
+  const { isTracking, tripPaused, pauseTrip, resumeTrip, currentDistance } =
     useGpsTracking();
   const navigation = useNavigation<any>();
+
+  // On GPS Tracking screen, Stop is inline below the active tile (not floating here).
+  if (currentRouteName === 'GpsTracking') {
+    return null;
+  }
 
   // Don't show if not tracking
   if (!isTracking) {
     return null;
   }
 
-  const formatDistance = (miles: number): string => {
-    if (miles < 0.1) {
-      return `${(miles * 5280).toFixed(0)} ft`;
-    } else {
-      return `${miles.toFixed(1)} mi`;
-    }
-  };
-
   const handleStopTracking = () => {
     void hapticMedium();
-    // Intentionally no "discard / cancel session" action here — it was easy to tap by mistake.
-    // To end tracking, users must use "End & save trip" and confirm destination. Staff who truly
-    // need to abandon a session can force-close the app or contact support (rare).
-    Alert.alert(
-      tripPaused ? 'Trip options (mileage paused)' : 'Trip options',
-      `Distance recorded: ${formatDistance(currentDistance)}${
-        tripPaused ? '\n\nMileage is paused.' : ''
-      }\n\nUse Pause for errands/stops without adding miles.`,
-      [
-        { text: 'Keep tracking', style: 'cancel' },
-        ...(tripPaused
-          ? [{ text: 'Resume mileage', onPress: () => void resumeTrip() }]
-          : [{ text: 'Pause mileage', onPress: () => void pauseTrip() }]),
-        {
-          text: 'End & save trip',
-          style: 'default',
-          onPress: () => {
-            if (currentRouteName === 'GpsTracking') {
-              requestStopTracking();
-            } else {
-              navigation.navigate('GpsTracking', { endTripOverlay: true });
-            }
-          },
-        },
-      ]
-    );
+    showGpsTripOptionsAlert({
+      tripPaused,
+      currentDistance,
+      onResume: () => void resumeTrip(),
+      onPause: () => void pauseTrip(),
+      onEndAndSave: () => {
+        navigation.navigate('GpsTracking', { endTripOverlay: true });
+      },
+    });
   };
 
   return (
@@ -76,7 +56,7 @@ export default function GlobalGpsStopButton({ currentRouteName }: GlobalGpsStopB
           <View style={styles.textContainer}>
             <Text style={styles.stopText}>Stop Tracking</Text>
             <Text style={styles.distanceText}>
-              {tripPaused ? `${formatDistance(currentDistance)} · paused` : formatDistance(currentDistance)}
+              {tripPaused ? `${formatGpsTripDistance(currentDistance)} · paused` : formatGpsTripDistance(currentDistance)}
             </Text>
           </View>
         </View>
