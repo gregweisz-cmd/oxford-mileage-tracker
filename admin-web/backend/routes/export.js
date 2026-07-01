@@ -540,14 +540,13 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
     try {
       const reportData = JSON.parse(report.reportData);
       
-      // Create PDF in portrait mode with proper PDF version for printer compatibility
-      // Disable compression for maximum printer driver compatibility (some drivers have issues with compressed PDFs)
+      // Entire finance PDF uses landscape letter for consistent layout and centering.
       const doc = new jsPDF({
-        orientation: 'portrait',
+        orientation: 'landscape',
         unit: 'pt',
-        format: 'a4',
-        compress: false, // Disable compression for better printer compatibility
-        precision: 2 // Use standard precision (some drivers have issues with high precision)
+        format: 'letter',
+        compress: false,
+        precision: 2
       });
       
       // Set PDF metadata for proper printing
@@ -574,6 +573,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 40;
+      const addReportPage = () => doc.addPage('letter', 'landscape');
       
       // Helper function for safe text
       const safeText = (text, x, y, options) => {
@@ -626,13 +626,13 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         setColor('white');
         doc.rect(personalInfoTableStartX, yPos, personalInfoLabelColWidth, personalInfoRowHeight, 'FD');
         doc.setTextColor(0, 0, 0);
-        safeText(label, personalInfoTableStartX + 10, yPos + personalInfoRowHeight/2 + 3);
+        safeText(label, personalInfoTableStartX + personalInfoLabelColWidth / 2, yPos + personalInfoRowHeight/2 + 3, { align: 'center' });
         
         doc.setFont('helvetica', 'normal');
         setColor('white');
         doc.rect(personalInfoTableStartX + personalInfoLabelColWidth, yPos, personalInfoValueColWidth, personalInfoRowHeight, 'FD');
         doc.setTextColor(0, 0, 0);
-        safeText(value, personalInfoTableStartX + personalInfoLabelColWidth + 10, yPos + personalInfoRowHeight/2 + 3);
+        safeText(value, personalInfoTableStartX + personalInfoLabelColWidth + personalInfoValueColWidth / 2, yPos + personalInfoRowHeight/2 + 3, { align: 'center' });
         yPos += personalInfoRowHeight;
       });
       
@@ -840,8 +840,8 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       // Only add page if we don't have enough space
       if (remainingSpace < estimatedSummaryHeight) {
         debugLog(`📄 Adding page for summary (remaining space ${remainingSpace.toFixed(0)} < ${estimatedSummaryHeight})`);
-      doc.addPage();
-      yPos = margin + 20;
+        addReportPage();
+        yPos = margin + 20;
       } else {
         // Continue on same page, just add some spacing
         yPos += 20;
@@ -855,11 +855,11 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       yPos += 40;
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      safeText(`Name: ${reportData.name || 'N/A'}`, margin, yPos);
+      safeText(`Name: ${reportData.name || 'N/A'}`, pageWidth / 2, yPos, { align: 'center' });
       yPos += 20;
-      safeText(`Date Completed: ${new Date().toLocaleDateString()}`, margin, yPos);
+      safeText(`Date Completed: ${new Date().toLocaleDateString()}`, pageWidth / 2, yPos, { align: 'center' });
       yPos += 20;
-      safeText(`Month: ${reportData.month}, ${reportData.year}`, margin, yPos);
+      safeText(`Month: ${reportData.month}, ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
       
       yPos += 40;
       
@@ -1036,7 +1036,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       travelExpenses.forEach(([category, ...amounts]) => {
         // Check for page break before drawing row
         if (yPos > pageHeight - 50) {
-          doc.addPage();
+          addReportPage();
           yPos = margin;
         }
         
@@ -1325,8 +1325,8 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         // Only add page if we don't have enough space
         if (remainingSpaceForTS < estimatedTimesheetHeight) {
           debugLog(`📄 Adding page for timesheet (remaining space ${remainingSpaceForTS.toFixed(0)} < ${estimatedTimesheetHeight})`);
-          doc.addPage();
-          yPos = margin + 20;
+          addReportPage();
+          yPos = Math.max(margin + 20, (pageHeight - estimatedTimesheetHeight) / 2);
         } else {
           // Continue on same page, just add some spacing
           yPos += 20;
@@ -1458,7 +1458,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           // Draw cost center rows
           costCenters.forEach(costCenter => {
             if (yPos > pageHeight - gridCellHeight * 10) {
-              doc.addPage();
+              addReportPage();
               yPos = margin + 20;
               // Redraw header row on new page
               let gridX = gridStartX;
@@ -1494,7 +1494,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           
           // BILLABLE HOURS totals row (sum of all cost center rows)
           if (yPos > pageHeight - gridCellHeight * 10) {
-            doc.addPage();
+            addReportPage();
             yPos = margin + 20;
           }
           
@@ -1530,7 +1530,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           
           categories.forEach(category => {
             if (yPos > pageHeight - gridCellHeight * 10) {
-              doc.addPage();
+              addReportPage();
               yPos = margin + 20;
             }
             
@@ -1559,7 +1559,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           
           // DAILY TOTALS row (sum of all rows above)
           if (yPos > pageHeight - gridCellHeight * 5) {
-            doc.addPage();
+            addReportPage();
             yPos = margin + 20;
           }
           
@@ -1597,7 +1597,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           
           // GRAND TOTAL row
           if (yPos > pageHeight - gridCellHeight * 5) {
-            doc.addPage();
+            addReportPage();
             yPos = margin + 20;
           }
           
@@ -1612,7 +1612,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             debugLog(`📄 Before receipts section: yPos=${yPos}, pageHeight=${pageHeight}`);
             // Always start receipts on a new page
             debugLog(`📄 Adding new page for receipts section`);
-        doc.addPage();
+        addReportPage();
         yPos = margin + 20;
         
         doc.setFontSize(14);
@@ -1743,7 +1743,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             // Check if we need a new page for the receipt row
             if (yPos > pageHeight - 150) {
               debugLog(`📄 Adding page in receipts loop (receipt ${idx + 1}, yPos ${yPos} > ${pageHeight - 150})`);
-              doc.addPage();
+              addReportPage();
               yPos = margin;
             }
             
@@ -1799,7 +1799,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           if (imagesToAdd.length > 0) {
             const receiptCaptionY = margin + 16;
             imagesToAdd.forEach((img) => {
-              doc.addPage();
+              addReportPage();
               doc.setFontSize(14);
               doc.setFont('helvetica', 'bold');
               safeText('RECEIPT IMAGES', pageWidth / 2, receiptCaptionY, { align: 'center' });
@@ -1825,9 +1825,10 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
           if (pendingMapContexts.length > 0) {
             await renderAllCostCenterMaps(doc, pendingMapContexts, {
             margin,
-            pageWidth,
-            pageHeight,
+            pageWidth: doc.internal.pageSize.getWidth(),
+            pageHeight: doc.internal.pageSize.getHeight(),
             safeText,
+            addReportPage,
             mapViewMode,
             isFinanceUser,
             isCostCenterMapsEnabled,
@@ -1984,7 +1985,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       const perDiemByDate = buildPerDiemByDate(reportData.dailyEntries, reportData.receipts);
       const processCostCenterSheet = (costCenter, index, onComplete, baseAddress, baseAddress2) => {
         debugLog(`📄 Processing cost center ${index} (${costCenter}): yPos=${yPos}`);
-        doc.addPage('letter', 'landscape');
+        addReportPage();
         yPos = margin + 20;
         const ccPageWidth = doc.internal.pageSize.getWidth();
         const ccPageHeight = doc.internal.pageSize.getHeight();
@@ -2524,7 +2525,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             let rowsDrawn = 0;
         for (let day = 1; day <= daysInMonth; day++) {
           if (yPos > ccPageHeight - 100) {
-            doc.addPage('letter', 'landscape');
+            addReportPage();
             yPos = margin;
           }
           

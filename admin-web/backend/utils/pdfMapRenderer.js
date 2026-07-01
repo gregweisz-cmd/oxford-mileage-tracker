@@ -7,7 +7,6 @@ const { debugLog, debugWarn, debugError } = require('../debug');
 async function renderCostCenterMaps(doc, ctx, options) {
   const {
     margin,
-    pageWidth,
     safeText,
     mapViewMode,
     isFinanceUser,
@@ -16,20 +15,37 @@ async function renderCostCenterMaps(doc, ctx, options) {
     abbreviateForDisplay,
     isExplicitlyBaseAddress,
     normalizeMileageEntryForPdfMaps,
-    formatMapDateForPdf
+    formatMapDateForPdf,
+    sectionTitlePending,
+    addReportPage
   } = options;
 
   const { costCenter, entriesForCostCenter, baseAddress, baseAddress2 } = ctx;
   const mileageEntries = entriesForCostCenter || [];
 
+  const pageWidth = () => doc.internal.pageSize.getWidth();
+
   const drawMapRowCentered = (yPosRef, text) => {
-    const mapRowMaxWidth = pageWidth - margin * 2;
+    const mapRowMaxWidth = pageWidth() - margin * 2;
     const mapLineHeight = 12;
     const lines = doc.splitTextToSize(text, mapRowMaxWidth);
     lines.forEach((line) => {
-      safeText(line, pageWidth / 2, yPosRef.value, { align: 'center' });
+      safeText(line, pageWidth() / 2, yPosRef.value, { align: 'center' });
       yPosRef.value += mapLineHeight;
     });
+  };
+
+  const beginMapPage = (yPosRef) => {
+    if (addReportPage) addReportPage();
+    else doc.addPage('letter', 'landscape');
+    yPosRef.value = margin + 16;
+    if (sectionTitlePending && sectionTitlePending.value) {
+      sectionTitlePending.value = false;
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      safeText('ROUTE MAPS', pageWidth() / 2, yPosRef.value, { align: 'center' });
+      yPosRef.value += 28;
+    }
   };
 
   try {
@@ -56,41 +72,41 @@ async function renderCostCenterMaps(doc, ctx, options) {
         const mapImage = Buffer.isBuffer(mapResult) ? mapResult : mapResult.imageBuffer;
         const tripSummary = Buffer.isBuffer(mapResult) ? null : mapResult.tripSummary;
         const imageDataUrl = googleMapsService.imageBufferToDataUrl(mapImage);
-        doc.addPage();
+        beginMapPage(yPosRef);
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         meta.headerLines.forEach((line) => drawMapRowCentered(yPosRef, line));
         yPosRef.value += 6;
-        const imageWidth = pageWidth - margin * 2;
+        const imageWidth = pageWidth() - margin * 2;
         const imageHeight = (imageWidth * 400) / 600;
-        doc.addImage(imageDataUrl, 'PNG', margin, yPosRef.value, imageWidth, imageHeight);
+        const imageX = margin;
+        doc.addImage(imageDataUrl, 'PNG', imageX, yPosRef.value, imageWidth, imageHeight);
         yPosRef.value += imageHeight + 12;
         if (tripSummary && (tripSummary.distanceText || tripSummary.durationText)) {
           doc.setFontSize(9);
           const tripLine = [tripSummary.distanceText, tripSummary.durationText].filter(Boolean).join(' · ');
           if (tripLine) {
-            safeText(tripLine, pageWidth / 2, yPosRef.value, { align: 'center' });
+            safeText(tripLine, pageWidth() / 2, yPosRef.value, { align: 'center' });
           }
         }
       } catch (mapError) {
         debugError(`❌ Error generating map for ${costCenter}:`, mapError);
-        doc.addPage();
-        yPosRef.value = margin + 16;
+        beginMapPage(yPosRef);
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         meta.headerLines.forEach((line) => drawMapRowCentered(yPosRef, line));
         yPosRef.value += 6;
         const placeholderH = 120;
-        const placeholderW = pageWidth - margin * 2;
+        const placeholderW = pageWidth() - margin * 2;
         const placeholderX = margin;
         doc.setDrawColor(200, 200, 200);
         doc.setLineWidth(0.5);
         doc.rect(placeholderX, yPosRef.value, placeholderW, placeholderH);
         yPosRef.value += placeholderH / 2 - 8;
         doc.setFontSize(11);
-        safeText('Map could not be generated for this trip.', pageWidth / 2, yPosRef.value, { align: 'center' });
+        safeText('Map could not be generated for this trip.', pageWidth() / 2, yPosRef.value, { align: 'center' });
         yPosRef.value += 14;
-        safeText('Please add the route map manually.', pageWidth / 2, yPosRef.value, { align: 'center' });
+        safeText('Please add the route map manually.', pageWidth() / 2, yPosRef.value, { align: 'center' });
       }
     };
 
@@ -178,12 +194,9 @@ async function renderCostCenterMaps(doc, ctx, options) {
 
 async function renderAllCostCenterMaps(doc, contexts, options) {
   if (!contexts || contexts.length === 0) return;
-  doc.addPage();
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  options.safeText('ROUTE MAPS', options.pageWidth / 2, options.margin + 20, { align: 'center' });
+  const sectionTitlePending = { value: true };
   for (const ctx of contexts) {
-    await renderCostCenterMaps(doc, ctx, options);
+    await renderCostCenterMaps(doc, ctx, { ...options, sectionTitlePending });
   }
 }
 
