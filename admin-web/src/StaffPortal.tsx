@@ -493,7 +493,8 @@ export function buildCostCenterRows(params: {
       return !!p && p.day === day &&
         normalizeCostCenterForMatch(entryCostCenter) === normalizeCostCenterForMatch(costCenter);
     });
-    const hoursWorked = timeForDayAndCC.reduce((s: number, t: any) => s + (Number(t.hours) || 0), 0);
+    // Billable hours only — PTO/category rows must not appear in Hours Worked (matches Timesheet tab).
+    const hoursWorked = getBillableHoursForCostCenterDay(rawTimeEntries, normDate, costCenter);
     const milesTraveled = withMiles.reduce((s: number, e: any) => s + (Number(e.miles) || 0), 0);
     const mileageAmount = withMiles.length ? withMiles.reduce((s: number, e: any) => s + (Number(e.miles) || 0) * 0.445, 0) : 0;
     const firstEntry = withMiles[0];

@@ -11,6 +11,16 @@ const config = require('../config');
 const helpers = require('../utils/helpers');
 const dateHelpers = require('../utils/dateHelpers');
 const { costCentersMatch } = require('../utils/costCenterNormalizer');
+const {
+  getBillableHoursForCostCenterDay,
+  buildTimesheetDailyMaps,
+  mapReceiptToTravelCategory,
+  emptyTravelExpenseTotals,
+  buildPerDiemByDate,
+  normalizeDateString,
+  normalizeCostCenterForMatch,
+  getDayFromStoredDate
+} = require('../utils/timeTrackingExport');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const XLSX = require('xlsx');
 const { jsPDF } = require('jspdf');
@@ -1404,7 +1414,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         
         // Fetch detailed time tracking data by day and cost center
         const detailedTimeQuery = `
-          SELECT date, costCenter, hours, category
+          SELECT date, costCenter, hours, category, updatedAt, createdAt
           FROM time_tracking 
           WHERE employeeId = ? 
           AND strftime("%m", date) = ? 
@@ -1437,43 +1447,8 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             debugError('❌ Error loading receipts from DB for PDF:', e);
           }
           
-          // Build data structure: costCenterDailyMap[costCenter][day] = hours
-          // And categoryDailyMap[category][day] = hours
-          const costCenterDailyMap = {};
-          const categoryDailyMap = {
-            'G&A': {},
-            'HOLIDAY': {},
-            'PTO': {},
-            'STD/LTD': {},
-            'PFL/PFML': {}
-          };
-          
-          timeEntries.forEach(entry => {
-            // Parse date to get day number
-            let day;
-            if (entry.date.includes('-')) {
-              day = parseInt(entry.date.split('-')[2]);
-            } else if (entry.date.includes('/')) {
-              day = parseInt(entry.date.split('/')[1]);
-            }
-            
-            if (day && day <= gridDaysToShow) {
-              const hours = parseFloat(entry.hours) || 0;
-              
-              // Map by cost center
-              if (entry.costCenter) {
-                if (!costCenterDailyMap[entry.costCenter]) {
-                  costCenterDailyMap[entry.costCenter] = {};
-                }
-                costCenterDailyMap[entry.costCenter][day] = (costCenterDailyMap[entry.costCenter][day] || 0) + hours;
-              }
-              
-              // Map by category (if provided)
-              if (entry.category && categoryDailyMap[entry.category]) {
-                categoryDailyMap[entry.category][day] = (categoryDailyMap[entry.category][day] || 0) + hours;
-              }
-            }
-          });
+          // Build timesheet maps using Staff Portal dedupe/partition logic (no double-counting).
+          const { costCenterDailyMap, categoryDailyMap } = buildTimesheetDailyMaps(timeEntries, gridDaysToShow);
           
           // Use all assigned cost centers from the report, even if they have no hours
           const assignedCenters = (reportData.costCenters || []);
@@ -2075,32 +2050,27 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
       }; // Close generateTimesheetAndFinalizePDF function
       
       let carryForwardOdometer = null;
+      const MILEAGE_RATE = 0.445;
+      const perDiemByDate = buildPerDiemByDate(reportData.dailyEntries, reportData.receipts);
       const processCostCenterSheet = (costCenter, index, onComplete, baseAddress, baseAddress2) => {
-        // Always start each cost center sheet on a new page
-        // But only if we're not already at the top of a page
-        // For first cost center, check if we need a page (if yPos is already low, we don't)
         debugLog(`📄 Processing cost center ${index} (${costCenter}): yPos=${yPos}`);
-        if (index === 0) {
-          // First cost center - we're already on a fresh page (added above before "Payable to")
-          debugLog(`📄 First cost center on existing fresh page (yPos ${yPos})`);
-          if (yPos < margin + 60) {
-            yPos = margin + 60; // Leave space for title
-          }
-        } else {
-          // Subsequent cost centers - always start on new page
-          debugLog(`📄 Adding new page for cost center ${index}`);
-          doc.addPage();
-          yPos = margin + 20;
-        }
+        doc.addPage('letter', 'landscape');
+        yPos = margin + 20;
+        const ccPageWidth = doc.internal.pageSize.getWidth();
+        const ccPageHeight = doc.internal.pageSize.getHeight();
         
-        // Table dimensions for Cost Center sheet - increased widths for better text fitting
-        const ccCellHeight = 12; // Base height
-        const ccColWidths = [50, 140, 50, 60, 50, 50, 60]; // Increased Description column width significantly
-        const ccHeaders = ['Date', 'Description/Activity', 'Hours', 'Odometer Start', 'Odometer End', 'Miles', 'Mileage ($)'];
+        // Table dimensions for Cost Center sheet (landscape — all expense columns)
+        const ccCellHeight = 12;
+        const ccColWidths = [42, 130, 32, 38, 38, 32, 38, 38, 38, 38, 38, 38, 38];
+        const ccHeaders = [
+          'Date', 'Description/Activity', 'Hours', 'Odometer Start', 'Odometer End', 'Miles', 'Mileage ($)',
+          'Air / Rail / Bus', 'Vehicle Rental / Fuel', 'Parking / Tolls', 'Ground Transport',
+          'Lodging', 'Per Diem ($)'
+        ];
         
         // Calculate total table width and center it on the page
         const totalTableWidth = ccColWidths.reduce((sum, width) => sum + width, 0);
-        const ccTableStartX = (pageWidth - totalTableWidth) / 2;
+        const ccTableStartX = (ccPageWidth - totalTableWidth) / 2;
         
         // Helper function for Cost Center table cells with text wrapping
         const drawCCCell = (x, y, width, height, text, color = 'white', textColor = 'black', align = 'left', wrapText = false) => {
@@ -2251,9 +2221,20 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         `;
         
         const timeTrackingQuery = `
-          SELECT date, description, hours, costCenter
+          SELECT date, description, hours, costCenter, category, updatedAt, createdAt
           FROM time_tracking 
           WHERE employeeId = ? 
+          AND (
+            (date LIKE '%-%-%' AND date(SUBSTR(date, 1, 10)) >= ? AND date(SUBSTR(date, 1, 10)) <= ?)
+            OR (date LIKE '%/%/%' AND CAST(SUBSTR(date, 1, 2) AS INTEGER) = ? AND SUBSTR(date, 7) = ?)
+          )
+          ORDER BY date
+        `;
+
+        const receiptsQuery = `
+          SELECT date, amount, category, costCenter
+          FROM receipts
+          WHERE employeeId = ?
           AND (
             (date LIKE '%-%-%' AND date(SUBSTR(date, 1, 10)) >= ? AND date(SUBSTR(date, 1, 10)) <= ?)
             OR (date LIKE '%/%/%' AND CAST(SUBSTR(date, 1, 2) AS INTEGER) = ? AND SUBSTR(date, 7) = ?)
@@ -2325,6 +2306,10 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
               }
             }
             
+            db.all(receiptsQuery, timeTrackingParams, (receiptErr, receiptRows) => {
+              const receiptEntries = receiptErr ? [] : (receiptRows || []);
+              if (receiptErr) debugError('❌ Error fetching receipts for cost center sheet:', receiptErr);
+
             db.all(timeTrackingQuery, timeTrackingParams, (err, timeEntries) => {
               if (err) {
                 debugError('❌ Error fetching time tracking entries:', err);
@@ -2350,11 +2335,11 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             // NOW draw the title, subtitle, and header AFTER data is fetched
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
-            safeText(`COST CENTER TRAVEL SHEET - ${costCenter}`, pageWidth / 2, yPos, { align: 'center' });
+            safeText(`COST CENTER TRAVEL SHEET - ${costCenter}`, ccPageWidth / 2, yPos, { align: 'center' });
             
             yPos += 30;
             doc.setFontSize(11);
-            safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, pageWidth / 2, yPos, { align: 'center' });
+            safeText(`${reportData.name || 'N/A'} - ${reportData.month} ${reportData.year}`, ccPageWidth / 2, yPos, { align: 'center' });
             
             yPos += 40;
             
@@ -2367,6 +2352,18 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
             });
             yPos += maxHeaderHeight;
             
+            const defaultDayData = () => ({
+              date: null,
+              description: '',
+              hours: 0,
+              odometerStart: 0,
+              odometerEnd: 0,
+              miles: 0,
+              mileageAmount: 0,
+              ...emptyTravelExpenseTotals()
+            });
+            const formatExpenseCell = (amount) => (Number(amount) > 0 ? `$${Number(amount).toFixed(2)}` : '');
+
             // Build maps for daily data aggregation
             const dailyDataMap = {};
             const entriesForCostCenter = (mileageEntries || []).filter(e => costCentersMatch(e.costCenter, costCenter));
@@ -2426,57 +2423,40 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 odometerStart,
                 odometerEnd,
                 miles: totalDayMiles,
-                mileageAmount: totalDayMiles * 0.655
+                mileageAmount: totalDayMiles * MILEAGE_RATE,
+                ...emptyTravelExpenseTotals()
               };
             });
 
-            // Process time tracking entries (for hours) - filter by cost center and normalize dates
-            
-            // Process time tracking entries (for hours) - filter by cost center and normalize dates
-            timeEntries
-              .filter(entry => {
-                // Only process entries that match this cost center
-                return costCentersMatch(entry.costCenter, costCenter);
-              })
-              .forEach(entry => {
-                // Handle YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, and MM/DD/YY formats
-                let day;
-                let dateStr = entry.date;
-                
-                // Handle ISO date strings (e.g., '2025-11-03T12:00:00.000Z')
-                if (dateStr.includes('T')) {
-                  dateStr = dateStr.split('T')[0]; // Extract just the date part
-                }
-                
-                if (dateStr.includes('-')) {
-                  // YYYY-MM-DD format
-                  const parts = dateStr.split('-');
-                  day = parseInt(parts[2], 10);
-                } else if (dateStr.includes('/')) {
-                  // MM/DD/YY format
-                  day = parseInt(dateStr.split('/')[1], 10);
-                } else {
-                  debugWarn(`⚠️ Unrecognized date format: ${entry.date}`);
-                  return; // Skip this entry
-                }
+            // Billable hours only — PTO and other category rows must not appear in Hours column.
+            for (let day = 1; day <= daysInMonth; day++) {
+              const dateYmd = `${yearStr}-${monthStr}-${String(day).padStart(2, '0')}`;
+              const billableHours = getBillableHoursForCostCenterDay(timeEntries, dateYmd, costCenter);
+              if (!dailyDataMap[day] && billableHours > 0) {
+                dailyDataMap[day] = defaultDayData();
+                dailyDataMap[day].date = dateYmd;
+                dailyDataMap[day].hours = billableHours;
+              } else if (dailyDataMap[day]) {
+                dailyDataMap[day].hours = billableHours;
+              }
+            }
+
+            (receiptEntries || []).forEach((receipt) => {
+              const receiptCc = receipt.costCenter || (reportData.costCenters || [])[0] || '';
+              if (!costCentersMatch(receiptCc, costCenter)) return;
+              const day = getDayFromStoredDate(receipt.date);
+              if (!day || day > daysInMonth) return;
               if (!dailyDataMap[day]) {
-                dailyDataMap[day] = {
-                  date: entry.date,
-                  description: entry.description || '',
-                  hours: parseFloat(entry.hours) || 0,
-                  odometerStart: 0,
-                  odometerEnd: 0,
-                  miles: 0,
-                  mileageAmount: 0
-                };
+                dailyDataMap[day] = defaultDayData();
+                dailyDataMap[day].date = receipt.date;
+              }
+              const amount = Number(receipt.amount) || 0;
+              const cat = String(receipt.category || '').trim();
+              if (cat === 'Per Diem') {
+                dailyDataMap[day].perDiem += amount;
               } else {
-                // Append description if multiple entries per day
-                if (entry.description) {
-                  dailyDataMap[day].description = dailyDataMap[day].description 
-                    ? `${dailyDataMap[day].description}\n${entry.description}` 
-                    : entry.description;
-                }
-                dailyDataMap[day].hours += (parseFloat(entry.hours) || 0);
+                const expenseKey = mapReceiptToTravelCategory(receipt.category);
+                if (expenseKey) dailyDataMap[day][expenseKey] += amount;
               }
             });
             
@@ -2512,13 +2492,9 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                   const userDesc = desc.description.trim();
                   if (!dailyDataMap[day]) {
                     dailyDataMap[day] = {
+                      ...defaultDayData(),
                       date: desc.date,
-                      description: userDesc,
-                      hours: 0,
-                      odometerStart: 0,
-                      odometerEnd: 0,
-                      miles: 0,
-                      mileageAmount: 0
+                      description: userDesc
                     };
                   } else {
                     // Match Staff Portal: user narrative first; append driving summary if present and not already in user text
@@ -2531,6 +2507,27 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                   }
                 }
               });
+            }
+
+            // Per-diem from daily entries when the day has activity but no per-diem receipt.
+            for (let day = 1; day <= daysInMonth; day++) {
+              const dayData = dailyDataMap[day];
+              if (!dayData) continue;
+              const dateYmd = normalizeDateString(
+                dayData.date || `${yearStr}-${monthStr}-${String(day).padStart(2, '0')}`
+              );
+              const hasActivity =
+                dayData.miles > 0 ||
+                dayData.hours > 0 ||
+                dayData.airRailBus > 0 ||
+                dayData.vehicleRentalFuel > 0 ||
+                dayData.parkingTolls > 0 ||
+                dayData.groundTransportation > 0 ||
+                dayData.lodging > 0 ||
+                (dayData.description || '').trim().length > 0;
+              if (hasActivity && dayData.perDiem <= 0 && perDiemByDate[dateYmd]) {
+                dayData.perDiem = perDiemByDate[dateYmd];
+              }
             }
 
             // Keep odometer continuity across cost centers in report order.
@@ -2586,21 +2583,13 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
         // Generate rows for all days of the month
             let rowsDrawn = 0;
         for (let day = 1; day <= daysInMonth; day++) {
-          if (yPos > pageHeight - 100) {
-            doc.addPage();
+          if (yPos > ccPageHeight - 100) {
+            doc.addPage('letter', 'landscape');
             yPos = margin;
           }
           
           const dateStr = `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${year.toString().slice(-2)}`;
-              const dayData = dailyDataMap[day] || {
-                date: dateStr,
-                description: '',
-                hours: 0,
-                odometerStart: 0,
-                odometerEnd: 0,
-                miles: 0,
-                mileageAmount: 0
-              };
+              const dayData = dailyDataMap[day] || defaultDayData();
               
               // Debug: Log first few rows with data
               if (day <= 5 || dayData.hours > 0 || dayData.description) {
@@ -2615,7 +2604,13 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
                 dayData.odometerStart > 0 ? dayData.odometerStart.toString() : '',
                 dayData.odometerEnd > 0 ? dayData.odometerEnd.toString() : '',
                 dayData.miles > 0 ? Math.round(dayData.miles).toString() : '',
-                dayData.mileageAmount > 0 ? `$${dayData.mileageAmount.toFixed(2)}` : ''
+                dayData.mileageAmount > 0 ? `$${dayData.mileageAmount.toFixed(2)}` : '',
+                formatExpenseCell(dayData.airRailBus),
+                formatExpenseCell(dayData.vehicleRentalFuel),
+                formatExpenseCell(dayData.parkingTolls),
+                formatExpenseCell(dayData.groundTransportation),
+                formatExpenseCell(dayData.lodging),
+                formatExpenseCell(dayData.perDiem)
           ];
           
           // Check if description needs wrapping and calculate required height
@@ -2971,6 +2966,7 @@ router.get('/api/export/expense-report-pdf/:id', async (req, res) => {
               onComplete();
             })();
             }); // Close timeTrackingQuery callback
+            }); // Close receiptsQuery callback
           }); // Close dailyDescriptionsQuery callback
         }); // Close mileageEntries callback
       };
