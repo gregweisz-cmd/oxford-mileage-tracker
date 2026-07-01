@@ -1148,6 +1148,20 @@ export class DatabaseService {
   }
 
   // Mileage entry operations
+  private static gpsAuditFromRow(row: any): Pick<
+    MileageEntry,
+    'gpsTrackStartedAt' | 'gpsTrackEndedAt' | 'gpsStartLat' | 'gpsStartLng' | 'gpsEndLat' | 'gpsEndLng'
+  > {
+    return {
+      gpsTrackStartedAt: row.gpsTrackStartedAt ? new Date(row.gpsTrackStartedAt) : undefined,
+      gpsTrackEndedAt: row.gpsTrackEndedAt ? new Date(row.gpsTrackEndedAt) : undefined,
+      gpsStartLat: row.gpsStartLat != null ? Number(row.gpsStartLat) : undefined,
+      gpsStartLng: row.gpsStartLng != null ? Number(row.gpsStartLng) : undefined,
+      gpsEndLat: row.gpsEndLat != null ? Number(row.gpsEndLat) : undefined,
+      gpsEndLng: row.gpsEndLng != null ? Number(row.gpsEndLng) : undefined,
+    };
+  }
+
   static async createMileageEntry(entry: Omit<MileageEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<MileageEntry> {
     const id = this.generateId();
     const now = new Date().toISOString();
@@ -1159,6 +1173,19 @@ export class DatabaseService {
     const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
     const dateOnly = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, '0')}-${String(entryDate.getDate()).padStart(2, '0')}`;
     
+    const gpsTrackStartedAt =
+      entry.gpsTrackStartedAt instanceof Date
+        ? entry.gpsTrackStartedAt.toISOString()
+        : entry.gpsTrackStartedAt
+          ? String(entry.gpsTrackStartedAt)
+          : null;
+    const gpsTrackEndedAt =
+      entry.gpsTrackEndedAt instanceof Date
+        ? entry.gpsTrackEndedAt.toISOString()
+        : entry.gpsTrackEndedAt
+          ? String(entry.gpsTrackEndedAt)
+          : null;
+
     // Insert with location details
     await database.runAsync(
       `INSERT INTO mileage_entries (
@@ -1166,8 +1193,9 @@ export class DatabaseService {
         startLocation, endLocation, startLocationName, startLocationAddress, 
         startLocationLat, startLocationLng, endLocationName, endLocationAddress, 
         endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, 
-        isGpsTracked, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        isGpsTracked, gpsTrackStartedAt, gpsTrackEndedAt, gpsStartLat, gpsStartLng, gpsEndLat, gpsEndLng,
+        createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id, 
         entry.employeeId, 
@@ -1200,7 +1228,13 @@ export class DatabaseService {
         entry.miles, 
         entry.notes || '', 
         entry.hoursWorked || 0,
-        entry.isGpsTracked ? 1 : 0, 
+        entry.isGpsTracked ? 1 : 0,
+        gpsTrackStartedAt,
+        gpsTrackEndedAt,
+        entry.gpsStartLat ?? null,
+        entry.gpsStartLng ?? null,
+        entry.gpsEndLat ?? null,
+        entry.gpsEndLng ?? null,
         now, 
         now
       ]
@@ -1244,6 +1278,7 @@ export class DatabaseService {
       ...row,
       date: this.parseDateSafe(row.date),
       isGpsTracked: Boolean(row.isGpsTracked),
+      ...this.gpsAuditFromRow(row),
       startLocationDetails: row.startLocationName ? {
         name: row.startLocationName,
         address: row.startLocationAddress || '',
@@ -1400,6 +1435,7 @@ export class DatabaseService {
       date: this.parseDateSafe(result.date),
       costCenter: result.costCenter || '',
       isGpsTracked: Boolean(result.isGpsTracked),
+      ...this.gpsAuditFromRow(result),
       startLocationDetails: result.startLocationName || result.startLocationAddress ? {
         name: result.startLocationName || '',
         address: result.startLocationAddress || '',
@@ -1655,6 +1691,7 @@ export class DatabaseService {
         notes: row.notes,
         hoursWorked: row.hoursWorked,
         isGpsTracked: Boolean(row.isGpsTracked),
+        ...this.gpsAuditFromRow(row),
         createdAt: new Date(row.createdAt),
         updatedAt: new Date(row.updatedAt)
       }));
@@ -1702,6 +1739,7 @@ export class DatabaseService {
         notes: row.notes,
         hoursWorked: row.hoursWorked,
         isGpsTracked: Boolean(row.isGpsTracked),
+        ...this.gpsAuditFromRow(row),
         createdAt: new Date(row.createdAt),
         updatedAt: new Date(row.updatedAt)
       }));
@@ -3086,6 +3124,7 @@ export class DatabaseService {
       miles: result.miles,
       odometerReading: result.odometerReading,
       isGpsTracked: Boolean(result.isGpsTracked),
+      ...this.gpsAuditFromRow(result),
       startLocationDetails: result.startLocationName ? {
         name: result.startLocationName,
         address: result.startLocationAddress || '',
@@ -3385,7 +3424,13 @@ export class DatabaseService {
       { column: 'endLocationName', type: 'TEXT' },
       { column: 'endLocationAddress', type: 'TEXT' },
       { column: 'endLocationLat', type: 'REAL' },
-      { column: 'endLocationLng', type: 'REAL' }
+      { column: 'endLocationLng', type: 'REAL' },
+      { column: 'gpsTrackStartedAt', type: 'TEXT' },
+      { column: 'gpsTrackEndedAt', type: 'TEXT' },
+      { column: 'gpsStartLat', type: 'REAL' },
+      { column: 'gpsStartLng', type: 'REAL' },
+      { column: 'gpsEndLat', type: 'REAL' },
+      { column: 'gpsEndLng', type: 'REAL' },
     ];
 
     for (const migration of mileageMigrations) {

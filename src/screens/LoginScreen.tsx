@@ -121,9 +121,10 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
 
   const syncEmployeeAfterCloudLogin = async (
     employeeData: any,
-    options?: { stayLoggedIn?: boolean }
+    options?: { stayLoggedIn?: boolean; loginPassword?: string }
   ) => {
     const persistStayLoggedIn = options?.stayLoggedIn ?? stayLoggedIn;
+    const loginPassword = options?.loginPassword?.trim() ?? '';
     return withDatabaseConnection(async () => {
     const existingEmployee = await DatabaseService.getEmployeeByEmail(employeeData.email);
 
@@ -135,7 +136,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       await DatabaseService.updateEmployee(canonicalId, {
         name: employeeData.name,
         email: employeeData.email,
-        password: existingEmployee.password || '',
+        password: loginPassword || existingEmployee.password || '',
         oxfordHouseId: employeeData.oxfordHouseId ?? existingEmployee.oxfordHouseId ?? '',
         position: employeeData.position ?? existingEmployee.position ?? '',
         phoneNumber: employeeData.phoneNumber ?? existingEmployee.phoneNumber ?? '',
@@ -163,7 +164,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       id: employeeData.id,
       name: employeeData.name,
       email: employeeData.email,
-      password: '',
+      password: loginPassword,
       oxfordHouseId: employeeData.oxfordHouseId || '',
       position: employeeData.position || '',
       phoneNumber: employeeData.phoneNumber || '',
@@ -203,7 +204,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
             await SecureStore.setItemAsync(AUTH_TOKEN_KEY, data.token);
           }
           try {
-            const ok = await syncEmployeeAfterCloudLogin(employeeData);
+            const ok = await syncEmployeeAfterCloudLogin(employeeData, { loginPassword });
             if (ok) {
               await maybePromptEnableBiometric(loginEmail, loginPassword);
             }

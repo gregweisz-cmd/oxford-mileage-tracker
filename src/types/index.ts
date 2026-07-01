@@ -119,6 +119,13 @@ export interface MileageEntry {
   notes?: string;
   hoursWorked?: number; // DEPRECATED: Use TimeTracking instead for hours management
   isGpsTracked: boolean; // Whether this entry was created via GPS tracking
+  /** Device GPS when user tapped Start Tracking (synced for admin review). */
+  gpsTrackStartedAt?: Date;
+  gpsTrackEndedAt?: Date;
+  gpsStartLat?: number;
+  gpsStartLng?: number;
+  gpsEndLat?: number;
+  gpsEndLng?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -164,6 +171,11 @@ export interface GpsTrackingSession {
   isActive: boolean;
   purpose: string;
   notes?: string;
+  /** Phone GPS fix when Start Tracking was pressed. */
+  gpsDeviceStartLat?: number;
+  gpsDeviceStartLng?: number;
+  gpsDeviceEndLat?: number;
+  gpsDeviceEndLng?: number;
 }
 
 export interface Receipt {

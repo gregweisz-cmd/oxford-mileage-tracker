@@ -10,7 +10,7 @@ import { debugLog, debugError, debugWarn } from '../config/debug';
 import { API_BASE_URL } from '../config/api';
 import { getSyncMonthScope, monthDateBounds } from './syncScopeService';
 import { getAuthHeaders } from './authHeaders';
-import { refreshEmployeeJwtFromStoredCredentials } from './authSessionRefresh';
+import { refreshAuthSessionAfter401 } from './authSessionRefresh';
 
 /** Pull only a calendar month from the API, or the full history (large; use sparingly). */
 export type SyncFromBackendScope =
@@ -83,7 +83,7 @@ export class ApiSyncService {
       },
     });
     if (response.status === 401 && !isAuthRetry) {
-      const refreshed = await refreshEmployeeJwtFromStoredCredentials();
+      const refreshed = await refreshAuthSessionAfter401();
       if (refreshed) {
         return this.authenticatedFetch(input, init, true);
       }
@@ -867,6 +867,20 @@ export class ApiSyncService {
             isGpsTracked: entry.isGpsTracked || false,
             costCenter: entry.costCenter || '', // Include costCenter to ensure it's synced
             vehicleId: entry.vehicleId || undefined,
+            gpsTrackStartedAt: entry.gpsTrackStartedAt
+              ? entry.gpsTrackStartedAt instanceof Date
+                ? entry.gpsTrackStartedAt.toISOString()
+                : String(entry.gpsTrackStartedAt)
+              : undefined,
+            gpsTrackEndedAt: entry.gpsTrackEndedAt
+              ? entry.gpsTrackEndedAt instanceof Date
+                ? entry.gpsTrackEndedAt.toISOString()
+                : String(entry.gpsTrackEndedAt)
+              : undefined,
+            gpsStartLat: entry.gpsStartLat,
+            gpsStartLng: entry.gpsStartLng,
+            gpsEndLat: entry.gpsEndLat,
+            gpsEndLng: entry.gpsEndLng,
           };
           
           // Debug: Log address information to verify it's being sent
@@ -1950,6 +1964,12 @@ export class ApiSyncService {
         hoursWorked: entry.hoursWorked || 0,
         isGpsTracked: Boolean(entry.isGpsTracked),
         costCenter: entry.costCenter || '',
+        gpsTrackStartedAt: entry.gpsTrackStartedAt ? new Date(entry.gpsTrackStartedAt) : undefined,
+        gpsTrackEndedAt: entry.gpsTrackEndedAt ? new Date(entry.gpsTrackEndedAt) : undefined,
+        gpsStartLat: entry.gpsStartLat != null ? Number(entry.gpsStartLat) : undefined,
+        gpsStartLng: entry.gpsStartLng != null ? Number(entry.gpsStartLng) : undefined,
+        gpsEndLat: entry.gpsEndLat != null ? Number(entry.gpsEndLat) : undefined,
+        gpsEndLng: entry.gpsEndLng != null ? Number(entry.gpsEndLng) : undefined,
         createdAt: new Date(entry.createdAt),
         updatedAt: new Date(entry.updatedAt)
       }));
@@ -2472,7 +2492,7 @@ export class ApiSyncService {
                 startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?,
                 startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?,
                 endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?,
-                isGpsTracked = ?, updatedAt = ?
+                isGpsTracked = ?, gpsTrackStartedAt = ?, gpsTrackEndedAt = ?, gpsStartLat = ?, gpsStartLng = ?, gpsEndLat = ?, gpsEndLng = ?, updatedAt = ?
               WHERE id = ?`,
               [
                 entry.employeeId,
@@ -2496,6 +2516,16 @@ export class ApiSyncService {
                 entry.notes || '',
                 entry.hoursWorked || 0,
                 entry.isGpsTracked ? 1 : 0,
+                entry.gpsTrackStartedAt instanceof Date
+                  ? entry.gpsTrackStartedAt.toISOString()
+                  : entry.gpsTrackStartedAt || null,
+                entry.gpsTrackEndedAt instanceof Date
+                  ? entry.gpsTrackEndedAt.toISOString()
+                  : entry.gpsTrackEndedAt || null,
+                entry.gpsStartLat ?? null,
+                entry.gpsStartLng ?? null,
+                entry.gpsEndLat ?? null,
+                entry.gpsEndLng ?? null,
                 entryUpdatedAt,
                 entry.id
               ]
@@ -2509,8 +2539,8 @@ export class ApiSyncService {
                 startLocation, endLocation, startLocationName, startLocationAddress,
                 startLocationLat, startLocationLng, endLocationName, endLocationAddress,
                 endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked,
-                isGpsTracked, createdAt, updatedAt
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                isGpsTracked, gpsTrackStartedAt, gpsTrackEndedAt, gpsStartLat, gpsStartLng, gpsEndLat, gpsEndLng, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 entry.id, // Preserve backend ID
                 entry.employeeId,
@@ -2534,6 +2564,16 @@ export class ApiSyncService {
                 entry.notes || '',
                 entry.hoursWorked || 0,
                 entry.isGpsTracked ? 1 : 0,
+                entry.gpsTrackStartedAt instanceof Date
+                  ? entry.gpsTrackStartedAt.toISOString()
+                  : entry.gpsTrackStartedAt || null,
+                entry.gpsTrackEndedAt instanceof Date
+                  ? entry.gpsTrackEndedAt.toISOString()
+                  : entry.gpsTrackEndedAt || null,
+                entry.gpsStartLat ?? null,
+                entry.gpsStartLng ?? null,
+                entry.gpsEndLat ?? null,
+                entry.gpsEndLng ?? null,
                 entry.createdAt instanceof Date ? entry.createdAt.toISOString() : (entry.createdAt || new Date().toISOString()),
                 entryUpdatedAt
               ]

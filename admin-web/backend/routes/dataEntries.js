@@ -226,7 +226,13 @@ router.post('/api/mileage-entries', (req, res) => {
     hoursWorked,
     isGpsTracked,
     costCenter,
-    vehicleId
+    vehicleId,
+    gpsTrackStartedAt,
+    gpsTrackEndedAt,
+    gpsStartLat,
+    gpsStartLng,
+    gpsEndLat,
+    gpsEndLng,
   } = req.body;
   // Use provided ID or generate a new one
   // IMPORTANT: Always use the provided ID if available to prevent duplicates
@@ -291,7 +297,7 @@ router.post('/api/mileage-entries', (req, res) => {
 
     const runInsert = (sortOrderVal) => {
       db.run(
-        'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, vehicleId, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, sortOrder, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
+        'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, vehicleId, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, sortOrder, gpsTrackStartedAt, gpsTrackEndedAt, gpsStartLat, gpsStartLng, gpsEndLat, gpsEndLng, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
         [
           entryId,
           employeeId,
@@ -316,6 +322,12 @@ router.post('/api/mileage-entries', (req, res) => {
           isGpsTracked ? 1 : 0,
           costCenter || '',
           sortOrderVal,
+          gpsTrackStartedAt || null,
+          gpsTrackEndedAt || null,
+          gpsStartLat || 0,
+          gpsStartLng || 0,
+          gpsEndLat || 0,
+          gpsEndLng || 0,
           entryId,
           now,
           now
@@ -384,7 +396,13 @@ router.put('/api/mileage-entries/:id', guardResourceEmployeeAccess('mileage_entr
     hoursWorked,
     isGpsTracked,
     costCenter,
-    vehicleId
+    vehicleId,
+    gpsTrackStartedAt,
+    gpsTrackEndedAt,
+    gpsStartLat,
+    gpsStartLng,
+    gpsEndLat,
+    gpsEndLng,
   } = req.body;
   const now = new Date().toISOString();
   const db = dbService.getDb();
@@ -436,7 +454,7 @@ router.put('/api/mileage-entries/:id', guardResourceEmployeeAccess('mileage_entr
     }
 
   db.run(
-    'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, vehicleId = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, updatedAt = ? WHERE id = ?',
+    'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, vehicleId = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, gpsTrackStartedAt = COALESCE(?, gpsTrackStartedAt), gpsTrackEndedAt = COALESCE(?, gpsTrackEndedAt), gpsStartLat = COALESCE(?, gpsStartLat), gpsStartLng = COALESCE(?, gpsStartLng), gpsEndLat = COALESCE(?, gpsEndLat), gpsEndLng = COALESCE(?, gpsEndLng), updatedAt = ? WHERE id = ?',
     [
       employeeId,
       oxfordHouseId || '',
@@ -459,6 +477,12 @@ router.put('/api/mileage-entries/:id', guardResourceEmployeeAccess('mileage_entr
       hoursWorked || 0,
       isGpsTracked ? 1 : 0,
       costCenter || '',
+      gpsTrackStartedAt || null,
+      gpsTrackEndedAt || null,
+      gpsStartLat ?? null,
+      gpsStartLng ?? null,
+      gpsEndLat ?? null,
+      gpsEndLng ?? null,
       now,
       id
     ],

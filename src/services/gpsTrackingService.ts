@@ -186,6 +186,8 @@ export class GpsTrackingService {
         odometerReading,
         startLocation,
         startLocationDetails: chosenStartLocation ? { ...chosenStartLocation } : undefined,
+        gpsDeviceStartLat: location.coords.latitude,
+        gpsDeviceStartLng: location.coords.longitude,
         totalMiles: 0,
         isActive: true,
         purpose,
@@ -306,18 +308,34 @@ export class GpsTrackingService {
       this.currentSession.totalMiles = Math.round(finalDistance);
       this.currentSession.isActive = false;
 
+      if (this.lastLocation?.coords) {
+        this.currentSession.gpsDeviceEndLat = this.lastLocation.coords.latitude;
+        this.currentSession.gpsDeviceEndLng = this.lastLocation.coords.longitude;
+      }
+
       if (presetEndLocation) {
         const label =
           presetEndLocation.name?.trim() ||
           presetEndLocation.address?.trim() ||
           'Unknown';
         this.currentSession.endLocation = label;
+        if (
+          this.currentSession.gpsDeviceEndLat == null &&
+          presetEndLocation.latitude != null &&
+          presetEndLocation.longitude != null
+        ) {
+          this.currentSession.gpsDeviceEndLat = presetEndLocation.latitude;
+          this.currentSession.gpsDeviceEndLng = presetEndLocation.longitude;
+        }
       } else {
-        // Fallback: fetch position (can block several seconds; only used if no UI-provided end)
         const finalLocation = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
         this.currentSession.endLocation = await this.reverseGeocode(finalLocation.coords);
+        if (this.currentSession.gpsDeviceEndLat == null) {
+          this.currentSession.gpsDeviceEndLat = finalLocation.coords.latitude;
+          this.currentSession.gpsDeviceEndLng = finalLocation.coords.longitude;
+        }
       }
 
       const completedSession = { ...this.currentSession };

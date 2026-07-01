@@ -13,6 +13,7 @@ const helpers = require('../utils/helpers');
 const dateHelpers = require('../utils/dateHelpers');
 const { normalizeCostCenter } = require('../utils/costCenterNormalizer');
 const { debugLog, debugWarn, debugError } = require('../debug');
+const { haversineMiles, hasValidCoords } = require('../utils/geoDistance');
 const { requireAuth, requireAnyRole, getEffectiveRole } = require('../middleware/auth');
 
 // Admin reporting + schedules require authenticated admin/finance role
@@ -3542,6 +3543,126 @@ router.get('/api/admin/reporting/map-data', async (req, res) => {
     });
   } catch (error) {
     debugError('❌ Error generating admin reporting map data:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/api/admin/reporting/gps-trips', async (req, res) => {
+  const db = dbService.getDb();
+  try {
+    const now = new Date();
+    let endDate = parseDateInput(req.query.endDate) || new Date(now);
+    let startDate = parseDateInput(req.query.startDate);
+    if (!startDate) {
+      startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    }
+    if (startDate > endDate) {
+      const temp = startDate;
+      startDate = endDate;
+      endDate = temp;
+    }
+    startDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    endDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+    endDate.setHours(23, 59, 59, 999);
+
+    const startIso = toSqlDate(startDate);
+    const endIso = toSqlDate(endDate);
+    const employeeId = typeof req.query.employeeId === 'string' ? req.query.employeeId.trim() : '';
+
+    const params = [startIso, endIso];
+    let employeeClause = '';
+    if (employeeId) {
+      employeeClause = ' AND me.employeeId = ?';
+      params.push(employeeId);
+    }
+
+    const rows = await dbAllAsync(
+      `
+        SELECT
+          me.id,
+          me.employeeId,
+          me.date,
+          me.miles,
+          me.purpose,
+          me.startLocation,
+          me.endLocation,
+          me.startLocationName,
+          me.startLocationAddress,
+          me.startLocationLat,
+          me.startLocationLng,
+          me.endLocationName,
+          me.endLocationAddress,
+          me.endLocationLat,
+          me.endLocationLng,
+          me.gpsTrackStartedAt,
+          me.gpsTrackEndedAt,
+          me.gpsStartLat,
+          me.gpsStartLng,
+          me.gpsEndLat,
+          me.gpsEndLng,
+          me.createdAt,
+          me.updatedAt,
+          COALESCE(NULLIF(e.preferredName, ''), e.name) AS employeeName,
+          e.baseAddress,
+          e.baseAddress2
+        FROM mileage_entries me
+        LEFT JOIN employees e ON e.id = me.employeeId
+        WHERE me.isGpsTracked = 1
+          AND date(me.date) BETWEEN date(?) AND date(?)
+          ${employeeClause}
+        ORDER BY COALESCE(me.gpsTrackStartedAt, me.createdAt) DESC
+        LIMIT 500
+      `,
+      params
+    );
+
+    const trips = rows.map((row) => {
+      const startGapMiles =
+        hasValidCoords(row.gpsStartLat, row.gpsStartLng) &&
+        hasValidCoords(row.startLocationLat, row.startLocationLng)
+          ? haversineMiles(
+              row.gpsStartLat,
+              row.gpsStartLng,
+              row.startLocationLat,
+              row.startLocationLng
+            )
+          : null;
+      const endGapMiles =
+        hasValidCoords(row.gpsEndLat, row.gpsEndLng) &&
+        hasValidCoords(row.endLocationLat, row.endLocationLng)
+          ? haversineMiles(row.gpsEndLat, row.gpsEndLng, row.endLocationLat, row.endLocationLng)
+          : null;
+
+      let tripDurationMinutes = null;
+      if (row.gpsTrackStartedAt && row.gpsTrackEndedAt) {
+        const startMs = new Date(row.gpsTrackStartedAt).getTime();
+        const endMs = new Date(row.gpsTrackEndedAt).getTime();
+        if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs) {
+          tripDurationMinutes = Math.round((endMs - startMs) / 60000);
+        }
+      }
+
+      return {
+        ...row,
+        startGapMiles: startGapMiles != null ? Number(startGapMiles.toFixed(2)) : null,
+        endGapMiles: endGapMiles != null ? Number(endGapMiles.toFixed(2)) : null,
+        tripDurationMinutes,
+        flagLateStart: startGapMiles != null && startGapMiles > 0.25,
+        flagLateEnd: endGapMiles != null && endGapMiles > 0.25,
+        hasGpsAudit:
+          hasValidCoords(row.gpsStartLat, row.gpsStartLng) ||
+          hasValidCoords(row.gpsEndLat, row.gpsEndLng) ||
+          !!row.gpsTrackStartedAt,
+      };
+    });
+
+    res.json({
+      trips,
+      filters: { startDate: startIso, endDate: endIso, employeeId: employeeId || null },
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    debugError('❌ Error generating GPS trip investigation data:', error);
     res.status(500).json({ error: error.message });
   }
 });

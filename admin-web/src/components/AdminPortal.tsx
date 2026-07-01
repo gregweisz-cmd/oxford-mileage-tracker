@@ -14,7 +14,7 @@ import { ReportsAnalyticsTab } from './ReportsAnalyticsTab';
 import { SupervisorManagement } from './SupervisorManagement';
 import { SystemSettings } from './SystemSettings';
 import { AuditLogViewer } from './AuditLogViewer';
-import { NotificationControlTab } from './NotificationControlTab';
+import { GpsTripInvestigationTab } from './GpsTripInvestigationTab';
 import { TravelReasonsManagement } from './TravelReasonsManagement';
 import { DailyDescriptionOptionsManagement } from './DailyDescriptionOptionsManagement';
 import { EmployeeApiService } from '../services/employeeApiService';
@@ -172,6 +172,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
             <Tab label="Supervisor Management" />
             <Tab label="Cost Center Management" />
             <Tab label="Reports & Analytics" />
+            <Tab label="GPS Trip Log" />
             <Tab label="Travel Reasons" />
             <Tab label="Daily Description" />
             <Tab label="Notifications" />
@@ -209,22 +210,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
         </TabPanel>
 
         <TabPanel value={activeTab} index={4}>
-          <TravelReasonsManagement />
+          <GpsTripInvestigationTab employees={employees} />
         </TabPanel>
 
         <TabPanel value={activeTab} index={5}>
-          <DailyDescriptionOptionsManagement />
+          <TravelReasonsManagement />
         </TabPanel>
 
         <TabPanel value={activeTab} index={6}>
-          <NotificationControlTab adminId={adminId} />
+          <DailyDescriptionOptionsManagement />
         </TabPanel>
 
         <TabPanel value={activeTab} index={7}>
-          <AuditLogViewer adminId={adminId} />
+          <NotificationControlTab adminId={adminId} />
         </TabPanel>
 
         <TabPanel value={activeTab} index={8}>
+          <AuditLogViewer adminId={adminId} />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={9}>
           <SystemSettings adminId={adminId} />
         </TabPanel>
       </Container>

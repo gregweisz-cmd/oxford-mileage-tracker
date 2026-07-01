@@ -42,6 +42,7 @@ import GooglePlacesAddressInput from '../components/GooglePlacesAddressInput';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { formatAddressParts, parseAddressParts, updateAddressPart } from '../utils/addressFormatter';
 import { toCanonicalAddress } from '../utils/locationSelection';
+import { formatSyncErrorForUser } from '../utils/syncErrorMessage';
 
 const DISMISSED_NOTIFICATIONS_KEY_PREFIX = 'smart_notifications_dismissed_';
 const FIRST_LOGIN_PORTAL_TIP_KEY_PREFIX = 'first_login_portal_tip_shown:';
@@ -610,7 +611,7 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
       const { ApiSyncService } = await import('../services/apiSyncService');
       const pushResult = await SyncIntegrationService.forceSync(employee.id);
       if (!pushResult.success) {
-        Alert.alert('Sync failed', pushResult.error || 'Could not upload local changes. Check connection and try again.');
+        Alert.alert('Sync failed', formatSyncErrorForUser(pushResult.error));
         return;
       }
       const syncResult = await ApiSyncService.syncFromBackend(employee.id, undefined, { skipSyncQueue: true });
@@ -618,11 +619,11 @@ function HomeScreen({ navigation, route }: HomeScreenProps) {
         setLastSyncTime(new Date());
         await loadEmployeeData(employee.id, employee, { localOnly: true });
       } else {
-        Alert.alert('Sync failed', syncResult.error || 'Could not reach server. Check connection and try again.');
+        Alert.alert('Sync failed', formatSyncErrorForUser(syncResult.error));
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      Alert.alert('Sync failed', msg);
+      Alert.alert('Sync failed', formatSyncErrorForUser(msg));
     } finally {
       homeScreenIsSyncing = false;
       setIsSyncing(false);

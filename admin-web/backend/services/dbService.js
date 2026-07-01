@@ -1138,6 +1138,23 @@ function ensureTablesExist() {
           } else {
             db.run(`CREATE INDEX IF NOT EXISTS idx_mileage_entries_employee_vehicle_date ON mileage_entries(employeeId, vehicleId, date)`);
           }
+
+          const gpsAuditColumns = [
+            { name: 'gpsTrackStartedAt', type: 'TEXT' },
+            { name: 'gpsTrackEndedAt', type: 'TEXT' },
+            { name: 'gpsStartLat', type: 'REAL DEFAULT 0' },
+            { name: 'gpsStartLng', type: 'REAL DEFAULT 0' },
+            { name: 'gpsEndLat', type: 'REAL DEFAULT 0' },
+            { name: 'gpsEndLng', type: 'REAL DEFAULT 0' },
+          ];
+          for (const col of gpsAuditColumns) {
+            if (!columnNames.includes(col.name)) {
+              db.run(`ALTER TABLE mileage_entries ADD COLUMN ${col.name} ${col.type}`, (err) => {
+                if (err) debugLog(`Note: ${col.name} column may already exist`);
+                else debugLog(`✅ Added ${col.name} column to mileage_entries table`);
+              });
+            }
+          }
         }
       });
 

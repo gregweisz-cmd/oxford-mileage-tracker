@@ -84,6 +84,27 @@ export async function tryRestoreSessionOnLaunch(): Promise<Employee | null> {
     debugWarn('⚠️ JWT session restore failed:', e);
   }
 
+  if (await refreshEmployeeJwtFromStoredCredentials()) {
+    try {
+      const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+      if (token) {
+        const response = await fetch(`${origin}/api/auth/verify`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const verified = await response.json();
+          const employee = await applyApiEmployeeToLocal(verified.employee, true);
+          if (employee) {
+            debugLog('✅ Session restored after password refresh');
+            return employee;
+          }
+        }
+      }
+    } catch (e) {
+      debugWarn('⚠️ Session restore after password refresh failed:', e);
+    }
+  }
+
   try {
     const lastEmail = await SecureStore.getItemAsync(GOOGLE_LAST_EMAIL_KEY);
     if (!lastEmail?.trim()) {
@@ -112,6 +133,34 @@ export async function tryRestoreSessionOnLaunch(): Promise<Employee | null> {
   }
 
   return null;
+}
+
+async function renewGoogleSession(): Promise<boolean> {
+  try {
+    const lastEmail = await SecureStore.getItemAsync(GOOGLE_LAST_EMAIL_KEY);
+    if (!lastEmail?.trim()) {
+      return false;
+    }
+    const origin = rootApiOrigin();
+    const renewResponse = await fetch(`${origin}/api/auth/google/renew-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: lastEmail.trim().toLowerCase() }),
+    });
+    if (!renewResponse.ok) {
+      return false;
+    }
+    const data = (await renewResponse.json()) as { token?: string };
+    if (typeof data.token !== 'string' || !data.token) {
+      return false;
+    }
+    await SecureStore.setItemAsync(AUTH_TOKEN_KEY, data.token);
+    debugLog('✅ Auth refresh: stored new JWT from Google renew-session');
+    return true;
+  } catch (e) {
+    debugWarn('⚠️ Google renew-session during auth refresh failed:', e);
+    return false;
+  }
 }
 
 /**
@@ -146,4 +195,12 @@ export async function refreshEmployeeJwtFromStoredCredentials(): Promise<boolean
     debugWarn('⚠️ Auth refresh: error', e);
     return false;
   }
+}
+
+/** After a 401 from the API: password re-login, then Google silent renew. */
+export async function refreshAuthSessionAfter401(): Promise<boolean> {
+  if (await refreshEmployeeJwtFromStoredCredentials()) {
+    return true;
+  }
+  return renewGoogleSession();
 }

@@ -135,6 +135,12 @@ export async function executeEndTripSave(
         notes: completedSession.notes,
         isGpsTracked: true,
         costCenter: selectedCostCenter,
+        gpsTrackStartedAt: completedSession.startTime,
+        gpsTrackEndedAt: completedSession.endTime,
+        gpsStartLat: completedSession.gpsDeviceStartLat,
+        gpsStartLng: completedSession.gpsDeviceStartLng,
+        gpsEndLat: completedSession.gpsDeviceEndLat,
+        gpsEndLng: completedSession.gpsDeviceEndLng,
       }),
       SAVE_TRIP_TIMEOUT_MS,
       'Save trip data'
