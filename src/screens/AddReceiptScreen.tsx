@@ -18,7 +18,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
-import { RootStackParamList } from '../types';
+import { normalizeReceiptImageUri } from '../utils/receiptImageNormalize';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
@@ -28,7 +28,7 @@ import { PerDiemRulesService } from '../services/perDiemRulesService';
 import EesRulesService from '../services/eesRulesService';
 import { CostCenterAutoSelectionService } from '../services/costCenterAutoSelectionService';
 import { VendorSuggestion, NearbyVendor } from '../services/vendorIntelligenceService';
-import { Employee, Receipt } from '../types';
+import { Employee, Receipt, RootStackParamList } from '../types';
 import { CategoryAiService, CategorySuggestion } from '../services/categoryAiService';
 import { showErrorWithGoBack, isHttpClientError } from '../utils/errorAlerts';
 import { PerDiemAiService, PerDiemEligibility } from '../services/perDiemAiService';
@@ -236,20 +236,36 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   const applySelectedImage = React.useCallback(
     (imageUri: string) => {
       const editingReceipt = (route.params as { receipt?: Receipt } | undefined)?.receipt;
-      setImageUri(imageUri);
-      setFileType('image');
       setDismissedQualityWarning(false);
 
       if (editingReceipt?.id) {
+        void (async () => {
+          try {
+            const normalizedUri = await normalizeReceiptImageUri(imageUri);
+            setImageUri(normalizedUri);
+            setFileType('image');
+          } catch (error) {
+            console.error('Error normalizing receipt image:', error);
+            setImageUri(imageUri);
+            setFileType('image');
+          }
+        })();
         return;
       }
 
       setReadingImageToFillData(true);
-      (async () => {
+      void (async () => {
         try {
-          const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(imageUri);
+          const normalizedUri = await normalizeReceiptImageUri(imageUri);
+          setImageUri(normalizedUri);
+          setFileType('image');
+          const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(normalizedUri);
           setPhotoQualityResult(qualityResult);
-          await processOcrOnImage(imageUri);
+          await processOcrOnImage(normalizedUri);
+        } catch (error) {
+          console.error('Error processing receipt image:', error);
+          setImageUri(imageUri);
+          setFileType('image');
         } finally {
           setReadingImageToFillData(false);
         }

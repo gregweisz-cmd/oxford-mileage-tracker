@@ -17,6 +17,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { normalizeReceiptImageUri } from '../utils/receiptImageNormalize';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
 import { PdfService } from '../services/pdfService';
@@ -424,23 +425,28 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     try {
       setImageUpdating(true);
 
+      const imageUri =
+        /\.pdf$/i.test(newImageUri.split('?')[0])
+          ? newImageUri
+          : await normalizeReceiptImageUri(newImageUri);
+
       await DatabaseService.updateReceipt(receipt.id, {
         ...receipt,
-        imageUri: newImageUri,
+        imageUri,
         fileType: 'image',
       });
 
       const applyListUpdate = (list: Receipt[]) =>
         list.map((item) =>
           item.id === receipt.id
-            ? { ...item, imageUri: newImageUri, fileType: 'image' as const }
+            ? { ...item, imageUri, fileType: 'image' as const }
             : item
         );
       setAllReceipts((prev) => applyListUpdate(prev));
       setReceipts((prev) => applyListUpdate(prev));
 
       if (selectedReceipt?.id === receipt.id) {
-        setSelectedReceipt({ ...selectedReceipt, imageUri: newImageUri, fileType: 'image' });
+        setSelectedReceipt({ ...selectedReceipt, imageUri, fileType: 'image' });
       }
 
       setImageErrors((prev) => {

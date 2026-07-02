@@ -11,6 +11,7 @@ import { API_BASE_URL } from '../config/api';
 import { getSyncMonthScope, monthDateBounds } from './syncScopeService';
 import { getAuthHeaders } from './authHeaders';
 import { refreshAuthSessionAfter401 } from './authSessionRefresh';
+import { normalizeReceiptImageUri } from '../utils/receiptImageNormalize';
 
 /** Pull only a calendar month from the API, or the full history (large; use sparingly). */
 export type SyncFromBackendScope =
@@ -1017,6 +1018,15 @@ export class ApiSyncService {
         debugWarn(`⚠️ ApiSync: URI doesn't match expected format: ${imageUri}`);
         // Continue anyway - some platforms might use different URI schemes
       }
+
+      if (!/\.pdf$/i.test(imageUri.split('?')[0])) {
+        try {
+          imageUri = await normalizeReceiptImageUri(imageUri);
+          debugLog(`📤 ApiSync: Normalized receipt image for upload: ${imageUri}`);
+        } catch (normalizeErr) {
+          debugWarn('⚠️ ApiSync: Could not normalize receipt image before upload:', normalizeErr);
+        }
+      }
       
       debugLog(`📤 ApiSync: Upload URL will be: ${this.config.baseUrl}/receipts/upload-image`);
       
@@ -1068,7 +1078,7 @@ export class ApiSyncService {
         // Extract file extension from URI if possible, otherwise default to jpg
         let fileExtension = '.jpg';
         let mimeType = 'image/jpeg';
-        const uriMatch = imageUri.match(/\.(jpg|jpeg|png|gif|webp|pdf)$/i);
+        const uriMatch = imageUri.match(/\.(jpg|jpeg|png|gif|webp|heic|heif|pdf)$/i);
         if (uriMatch) {
           fileExtension = uriMatch[0].toLowerCase();
           // Set MIME type based on extension
@@ -1080,6 +1090,9 @@ export class ApiSyncService {
             mimeType = 'image/gif';
           } else if (fileExtension === '.webp') {
             mimeType = 'image/webp';
+          } else if (fileExtension === '.heic' || fileExtension === '.heif') {
+            mimeType = 'image/jpeg';
+            fileExtension = '.jpg';
           }
         }
         

@@ -811,14 +811,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         console.log('🔍 GPS: Navigating to My Flock');
         navigation.navigate('MyFlock', { fromGpsTrackingStart: true });
       } else if (option === 'oxfordHouse') {
-        const suggested = startLocationSuggestions.oxfordHouse;
-        if (suggested) {
-          void startGpsTracking(suggested.details);
-        } else {
-          console.log('🔍 GPS: Showing Oxford House search modal');
-          setOxfordHousePickerRole('start');
-          setShowOxfordHouseSearchModal(true);
-        }
+        console.log('🔍 GPS: Showing Oxford House search modal');
+        setOxfordHousePickerRole('start');
+        setShowOxfordHouseSearchModal(true);
       } else if (option === 'newLocation') {
         console.log('🔍 GPS: Showing manual location entry modal');
         // Show manual location entry modal
@@ -1183,6 +1178,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
   }, [registerEndTripFlowHandler]);
 
   const openEndLocationModalWithDetails = (details: Partial<LocationDetails> | null) => {
+    endTripFlow.hideChoosingForPicker();
     endTripFlow.openCapture(details);
   };
 
@@ -1338,7 +1334,14 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
     option: 'baseAddress' | 'tripStart' | 'favoriteAddresses' | 'myFlock' | 'oxfordHouse' | 'newLocation'
   ) => {
     setTimeout(() => {
+      const reopenChooseEndLocation = () => {
+        if (isTrackingRef.current) {
+          openEndLocationOptionsRef.current();
+        }
+      };
+
       if (option === 'baseAddress') {
+        endTripFlow.hideChoosingForPicker();
         void (async () => {
           const employee = await refreshEmployeeFromBackend();
           if (!employee?.baseAddress?.trim()) {
@@ -1346,6 +1349,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
               'No base address',
               'Your profile does not have a base address on file. Add one in the web portal or choose another end location.'
             );
+            reopenChooseEndLocation();
             return;
           }
 
@@ -1354,13 +1358,20 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           await handleEndLocationConfirm(details);
         })();
         return;
-      } else if (option === 'tripStart') {
+      }
+
+      endTripFlow.hideChoosingForPicker();
+
+      if (option === 'tripStart') {
         const tripStart =
           startLocationDetailsRef.current ??
           startLocationDetails ??
           currentSession?.startLocationDetails ??
           null;
-        if (!tripStart) return;
+        if (!tripStart) {
+          reopenChooseEndLocation();
+          return;
+        }
         const suggested = endLocationSuggestions.tripStart;
         if (suggested) {
           openEndLocationModalWithDetails(suggested.details);
@@ -1373,20 +1384,12 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           });
         }
       } else if (option === 'favoriteAddresses') {
-        const suggested = endLocationSuggestions.favoriteAddresses;
-        if (suggested) {
-          openEndLocationModalWithDetails(suggested.details);
-        } else {
-          awaitingEndLocationPickerRef.current = true;
-          endTripFlow.hideChoosingForPicker();
-          navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
-        }
+        awaitingEndLocationPickerRef.current = true;
+        navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
       } else if (option === 'myFlock') {
         awaitingEndLocationPickerRef.current = true;
-        endTripFlow.hideChoosingForPicker();
         navigation.navigate('MyFlock', { fromGpsTrackingEnd: true });
       } else if (option === 'oxfordHouse') {
-        endTripFlow.hideChoosingForPicker();
         setOxfordHousePickerRole('end');
         setShowOxfordHouseSearchModal(true);
       } else if (option === 'newLocation') {

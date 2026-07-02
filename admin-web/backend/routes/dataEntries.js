@@ -23,6 +23,7 @@ const { normalizeAddressLine, normalizeLocationForStorage } = require('../utils/
 const { sanitizeLocationName } = require('../utils/locationName');
 const { formatLocationNameAndAddress } = require('../utils/locationDisplay');
 const { enrichAddressIfNeeded } = require('../utils/addressEnrichment');
+const { persistReceiptUpload, extensionFromDataUrl, isPdfBuffer } = require('../utils/receiptImageConvert');
 const { resolveSuggestedStartingOdometer } = require('../utils/odometerSuggestion');
 
 function normalizeGpsTrackingDiagnostics(value) {
@@ -953,51 +954,38 @@ router.post('/api/receipts/upload-image', uploadLimiter, (req, res, next) => {
       next();
     });
   }
-}, (req, res) => {
+}, async (req, res) => {
   // Handle base64 image in JSON body
   if (req.body && (req.body.image || req.body.imageData || req.body.base64)) {
     try {
       const base64Data = req.body.image || req.body.imageData || req.body.base64;
       const receiptId = req.body.receiptId || 'unknown';
-      const isPdf = base64Data && (String(base64Data).includes('data:application/pdf') || req.body.extension === '.pdf');
-      debugLog(`📸 POST /receipts/upload-image: receiptId=${receiptId}, type=${isPdf ? 'PDF' : 'image'}, base64 length=${base64Data ? String(base64Data).length : 0}`);
+      const isPdfHint =
+        base64Data &&
+        (String(base64Data).includes('data:application/pdf') || req.body.extension === '.pdf');
+      debugLog(`📸 POST /receipts/upload-image: receiptId=${receiptId}, type=${isPdfHint ? 'PDF' : 'image'}, base64 length=${base64Data ? String(base64Data).length : 0}`);
       
       if (!base64Data || base64Data.length === 0) {
         debugError('❌ Empty base64 data received');
         return res.status(400).json({ error: 'No image data provided' });
       }
       
-      // Remove data URL prefix if present (data:image/jpeg;base64,...)
       const base64String = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
       
       debugLog(`📸 Decoding base64 image (${base64String.length} chars)...`);
-      // Save base64 image to file
       const imageBuffer = Buffer.from(base64String, 'base64');
       debugLog(`📸 Image decoded, size: ${imageBuffer.length} bytes`);
-      
-      // Determine file extension from content type or request
-      let fileExtension = req.body.extension || '.jpg';
-      // Check if it's a PDF by looking at the base64 data prefix or content
-      if (base64Data.includes('data:application/pdf') || req.body.extension === '.pdf') {
-        fileExtension = '.pdf';
-      } else if (base64Data.includes('data:image/png')) {
-        fileExtension = '.png';
-      } else if (base64Data.includes('data:image/jpeg') || base64Data.includes('data:image/jpg')) {
-        fileExtension = '.jpg';
-      }
-      
-      const uniqueFilename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${fileExtension}`;
-      const imagePath = path.join(uploadsDir, uniqueFilename);
-      
-      debugLog(`📸 Saving file to: ${imagePath}`);
-      fs.writeFileSync(imagePath, imageBuffer);
-      debugLog(`✅ File saved successfully: ${uniqueFilename}`);
+
+      const dataUrlExt = extensionFromDataUrl(String(base64Data));
+      const isPdf = isPdfHint || dataUrlExt === '.pdf' || isPdfBuffer(imageBuffer);
+      const { filename, size } = await persistReceiptUpload(uploadsDir, imageBuffer, { isPdf });
+      debugLog(`✅ File saved successfully: ${filename}`);
       
       res.json({ 
-        imageUri: uniqueFilename,
-        imagePath: uniqueFilename,
-        filename: uniqueFilename,
-        size: imageBuffer.length,
+        imageUri: filename,
+        imagePath: filename,
+        filename,
+        size,
         message: 'Image uploaded successfully' 
       });
       return;
@@ -1017,7 +1005,6 @@ router.post('/api/receipts/upload-image', uploadLimiter, (req, res, next) => {
   }
 
   try {
-    // Get the uploaded file info (handle both single and multiple files)
     const uploadedFile = req.file || (req.files && req.files.image) || (req.files && Object.values(req.files)[0]);
     
     if (!uploadedFile) {
@@ -1026,24 +1013,29 @@ router.post('/api/receipts/upload-image', uploadLimiter, (req, res, next) => {
       return;
     }
     
+    const tempPath = uploadedFile.path;
+    const inputBuffer = fs.readFileSync(tempPath);
     const originalName = uploadedFile.originalname || uploadedFile.name || 'receipt.jpg';
-    let fileExtension = path.extname(originalName) || '.jpg';
-    // Ensure PDF extension is preserved
-    if (uploadedFile.mimetype === 'application/pdf' || originalName.toLowerCase().endsWith('.pdf')) {
-      fileExtension = '.pdf';
+    const isPdf =
+      uploadedFile.mimetype === 'application/pdf' ||
+      originalName.toLowerCase().endsWith('.pdf') ||
+      isPdfBuffer(inputBuffer);
+
+    const { filename, size } = await persistReceiptUpload(uploadsDir, inputBuffer, { isPdf });
+
+    try {
+      if (tempPath && fs.existsSync(tempPath) && path.basename(tempPath) !== filename) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch (unlinkErr) {
+      debugWarn('Could not remove temp upload file:', unlinkErr);
     }
     
-    // Create a unique filename if not already set
-    const uniqueFilename = uploadedFile.filename || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${fileExtension}`;
-    
-    // The file is already saved by multer in the uploads/ directory
-    const imagePath = uniqueFilename; // Relative path to uploads directory
-    
     res.json({ 
-      imageUri: imagePath,
-      imagePath: imagePath,
-      filename: uniqueFilename,
-      size: uploadedFile.size,
+      imageUri: filename,
+      imagePath: filename,
+      filename,
+      size,
       message: 'Image uploaded successfully' 
     });
   } catch (error) {
