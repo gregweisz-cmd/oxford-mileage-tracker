@@ -403,22 +403,49 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
         New trips include audit data after testers sync on an updated mobile build.
       </Typography>
 
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }} alignItems={{ md: 'flex-end' }}>
-        <FormDatePicker label="From" value={startDate} onChange={setStartDate} />
-        <FormDatePicker label="To" value={endDate} onChange={setEndDate} />
-        <Autocomplete
-          sx={{ minWidth: 280 }}
-          options={activeEmployees}
-          value={selectedEmployee}
-          onChange={(_, value) => setSelectedEmployee(value)}
-          getOptionLabel={(option) => option.name || option.email || option.id}
-          renderInput={(params) => <TextField {...params} label="Employee (optional)" />}
-          isOptionEqualToValue={(a, b) => a.id === b.id}
-        />
-        <Button variant="contained" startIcon={<RefreshIcon />} onClick={() => void loadTrips()} disabled={loading}>
-          Refresh
-        </Button>
-      </Stack>
+      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2}
+          alignItems={{ md: 'flex-end' }}
+          flexWrap="wrap"
+          useFlexGap
+        >
+          <FormDatePicker label="From" value={startDate} onChange={setStartDate} />
+          <FormDatePicker label="To" value={endDate} onChange={setEndDate} />
+          <Autocomplete
+            sx={{ minWidth: { xs: '100%', md: 280 }, flex: { md: '1 1 280px' }, maxWidth: { md: 360 } }}
+            options={activeEmployees}
+            value={selectedEmployee}
+            onChange={(_, value) => setSelectedEmployee(value)}
+            getOptionLabel={(option) => option.name || option.email || option.id}
+            renderInput={(params) => <TextField {...params} label="Employee (optional)" />}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+          />
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={
+              loading ? <CircularProgress size={18} color="inherit" /> : <RefreshIcon fontSize="small" />
+            }
+            onClick={() => void loadTrips()}
+            disabled={loading}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 600,
+              borderRadius: 1.5,
+              px: 2.5,
+              py: 1,
+              flexShrink: 0,
+              ml: { md: 'auto' },
+              width: { xs: '100%', sm: 'auto' },
+              alignSelf: { xs: 'stretch', md: 'flex-end' },
+            }}
+          >
+            {loading ? 'Loading…' : 'Refresh'}
+          </Button>
+        </Stack>
+      </Paper>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
