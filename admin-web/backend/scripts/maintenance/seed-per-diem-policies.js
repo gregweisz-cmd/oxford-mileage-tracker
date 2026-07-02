@@ -105,6 +105,8 @@ async function savePerDiemRule(db, costCenterName, rule, dryRunMode) {
     log(`Would ${existing ? 'update' : 'create'} per-diem rule for ${costCenterName}`, 'info');
     if (rule.ruleType === 'tiered') {
       log(`  Tiered: ${(rule.tiers || []).map((t) => t.label).join(', ') || '(none)'}`, 'info');
+    } else if (rule.maxAmount === 0 && !rule.useActualAmount) {
+      log('  No per diem (all days ineligible)', 'info');
     } else {
       log(`  Single: max $${rule.maxAmount}, min ${rule.minHours}h`, 'info');
     }

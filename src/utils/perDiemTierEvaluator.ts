@@ -123,6 +123,16 @@ function evaluateSingle(
   rule: PerDiemRuleConfig,
   input: PerDiemDayInput
 ): PerDiemDayEvaluation {
+  if ((rule.maxAmount ?? 0) === 0 && !rule.useActualAmount) {
+    return {
+      isEligible: false,
+      amount: 0,
+      tierLabel: null,
+      reason: 'No per diem for this cost center',
+      ruleType: 'single',
+    };
+  }
+
   const minHours = rule.minHours ?? 0;
   const minMiles = rule.minMiles ?? 0;
   const minDistance = rule.minDistanceFromBase ?? 0;
@@ -182,6 +192,9 @@ export function evaluatePerDiemDay(
 }
 
 export function getMaxDailyAmount(rule: PerDiemRuleConfig): number {
+  if ((rule.maxAmount ?? 0) === 0 && !rule.useActualAmount && rule.ruleType !== 'tiered') {
+    return 0;
+  }
   if (rule.ruleType === 'tiered' && rule.tiers && rule.tiers.length > 0) {
     return Math.max(...rule.tiers.map((t) => t.amount));
   }

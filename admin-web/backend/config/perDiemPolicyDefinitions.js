@@ -18,8 +18,8 @@ function noPerDiemRule(description) {
   return {
     ruleType: 'single',
     maxAmount: 0,
-    minHours: 9999,
-    minMiles: 9999,
+    minHours: 0,
+    minMiles: 0,
     minDistanceFromBase: 0,
     useActualAmount: false,
     description,
