@@ -183,6 +183,16 @@ async function updateCostCenterFlags(db, row, policy, dryRunMode) {
     params.push(1);
   }
 
+  if (policy.noTaxesOnReceipts === true && !row.noTaxesOnReceipts) {
+    updates.push('noTaxesOnReceipts = ?');
+    params.push(1);
+  }
+
+  if (policy.noTaxesOnSupplies === true && !row.noTaxesOnSupplies) {
+    updates.push('noTaxesOnSupplies = ?');
+    params.push(1);
+  }
+
   if (updates.length === 0) return;
 
   const now = new Date().toISOString();
@@ -191,6 +201,8 @@ async function updateCostCenterFlags(db, row, policy, dryRunMode) {
   if (dryRunMode) {
     log(`Would update cost center flags for ${row.name}`, 'info');
     if (policy.enableGoogleMaps) log('  enableGoogleMaps = true', 'info');
+    if (policy.noTaxesOnReceipts) log('  noTaxesOnReceipts = true', 'info');
+    if (policy.noTaxesOnSupplies) log('  noTaxesOnSupplies = true', 'info');
     if (policy.descriptionAppend) log(`  append policy note`, 'info');
     return;
   }
@@ -209,7 +221,10 @@ async function main() {
 
   await dbService.initDatabase();
   const db = dbService.getDb();
-  const allCostCenters = await dbAll(db, 'SELECT id, code, name, description, enableGoogleMaps FROM cost_centers');
+  const allCostCenters = await dbAll(
+    db,
+    'SELECT id, code, name, description, enableGoogleMaps, noTaxesOnReceipts, noTaxesOnSupplies FROM cost_centers'
+  );
 
   const assigned = new Set();
   const summary = { matched: 0, perDiemUpdated: 0, flagsUpdated: 0, unmatchedPolicies: [] };
@@ -232,7 +247,7 @@ async function main() {
         summary.perDiemUpdated += 1;
       }
 
-      if (policy.descriptionAppend || policy.enableGoogleMaps) {
+      if (policy.descriptionAppend || policy.enableGoogleMaps || policy.noTaxesOnReceipts || policy.noTaxesOnSupplies) {
         await updateCostCenterFlags(db, row, policy, dryRun);
         summary.flagsUpdated += 1;
       }

@@ -122,6 +122,9 @@ import {
 } from './utils/signatureApi';
 import { EMBEDDED_STICKY_TABLE_CONTAINER_SX, STICKY_SCROLLABLE_TABLE_CONTAINER_SX, useAppStickyOffset } from './hooks/useAppStickyOffset';
 import { CostCenterApiService } from './services/costCenterApiService';
+import { ReceiptTaxReminderAlert } from './components/ReceiptTaxReminderAlert';
+import { getReceiptTaxReminder } from './utils/receiptTaxReminder';
+import type { CostCenter } from './services/costCenterApiService';
 
 import FormDatePicker from './components/FormDatePicker';
 import {
@@ -1082,6 +1085,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     const loadCostCenterOptions = async () => {
       try {
         const all = await CostCenterApiService.getAllCostCenters();
+        setCostCenterCatalog(all || []);
         const names = (all || [])
           .filter((cc: any) => cc?.isActive !== false)
           .map((cc: any) => String(cc.name || '').trim())
@@ -1192,7 +1196,49 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [summaryEditDialogOpen, setSummaryEditDialogOpen] = useState(false);
   const [receiptTotalsByCategory, setReceiptTotalsByCategory] = useState<{[key: string]: number}>({});
   const [allCostCenterOptions, setAllCostCenterOptions] = useState<string[]>([]);
+  const [costCenterCatalog, setCostCenterCatalog] = useState<CostCenter[]>([]);
   
+  const employeeCostCenterNames = React.useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...(employeeData?.selectedCostCenters || []),
+            ...(employeeData?.costCenters || []),
+            ...(employeeData?.defaultCostCenter ? [employeeData.defaultCostCenter] : []),
+          ]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean)
+        )
+      ),
+    [employeeData]
+  );
+
+  const receiptManagementTaxReminder = React.useMemo(
+    () =>
+      getReceiptTaxReminder(costCenterCatalog, employeeCostCenterNames, { platform: 'web' }),
+    [costCenterCatalog, employeeCostCenterNames]
+  );
+
+  const receiptDialogTaxReminder = React.useMemo(
+    () =>
+      getReceiptTaxReminder(costCenterCatalog, employeeCostCenterNames, {
+        activeCostCenter:
+          editingReceipt?.costCenter ||
+          employeeData?.defaultCostCenter ||
+          employeeData?.costCenters?.[0] ||
+          '',
+        platform: 'web',
+      }),
+    [
+      costCenterCatalog,
+      employeeCostCenterNames,
+      editingReceipt?.costCenter,
+      employeeData?.defaultCostCenter,
+      employeeData?.costCenters,
+    ]
+  );
+
   // Submission type dialog state
 
   // Report submission and approval state
@@ -9345,6 +9391,8 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
               </Button>
             </Box>
 
+            <ReceiptTaxReminderAlert reminder={receiptManagementTaxReminder} />
+
             <TableContainer
               component={Paper}
               sx={embeddedReportView ? EMBEDDED_STICKY_TABLE_CONTAINER_SX : STICKY_SCROLLABLE_TABLE_CONTAINER_SX}
@@ -9745,6 +9793,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
         <DialogTitle>{editingReceipt?.id ? 'Edit Receipt' : 'Add Receipt'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <ReceiptTaxReminderAlert reminder={receiptDialogTaxReminder} />
             <FormDatePicker
               label="Date"
               value={editingReceipt?.date || ''}

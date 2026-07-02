@@ -79,6 +79,8 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
     isActive: true,
     enableGoogleMaps: false,
     perDiemReceiptImageRequired: false,
+    noTaxesOnReceipts: false,
+    noTaxesOnSupplies: false,
   });
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(initialSubTab);
@@ -151,7 +153,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
 
   const handleAddCostCenter = () => {
     setEditingCostCenter(null);
-    setFormData({ code: '', name: '', description: '', isActive: true, enableGoogleMaps: false, perDiemReceiptImageRequired: false });
+    setFormData({ code: '', name: '', description: '', isActive: true, enableGoogleMaps: false, perDiemReceiptImageRequired: false, noTaxesOnReceipts: false, noTaxesOnSupplies: false });
     setShowDialog(true);
     setError(null);
   };
@@ -165,6 +167,8 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
       isActive: costCenter.isActive,
       enableGoogleMaps: costCenter.enableGoogleMaps || false,
       perDiemReceiptImageRequired: costCenter.perDiemReceiptImageRequired || false,
+      noTaxesOnReceipts: Boolean(costCenter.noTaxesOnReceipts) || Number(costCenter.noTaxesOnReceipts) === 1,
+      noTaxesOnSupplies: Boolean(costCenter.noTaxesOnSupplies) || Number(costCenter.noTaxesOnSupplies) === 1,
     });
     setShowDialog(true);
     setError(null);
@@ -209,7 +213,7 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
 
   const handleCancel = () => {
     setShowDialog(false);
-    setFormData({ code: '', name: '', description: '', isActive: true, enableGoogleMaps: false, perDiemReceiptImageRequired: false });
+    setFormData({ code: '', name: '', description: '', isActive: true, enableGoogleMaps: false, perDiemReceiptImageRequired: false, noTaxesOnReceipts: false, noTaxesOnSupplies: false });
     setError(null);
   };
 
@@ -1078,6 +1082,34 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
             />
             <Typography variant="caption" color="text.secondary" sx={{ ml: 4, display: 'block', mt: -1 }}>
               When enabled, users in this cost center must attach a receipt image/PDF for per diem entries.
+            </Typography>
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.noTaxesOnReceipts}
+                  onChange={(e) => setFormData({ ...formData, noTaxesOnReceipts: e.target.checked })}
+                />
+              }
+              label="Remind staff to split sales tax on receipts"
+              sx={{ mt: 2 }}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 4, display: 'block', mt: -1 }}>
+              Shows a reminder on receipt screens that sales tax should be split out and not reimbursed.
+            </Typography>
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.noTaxesOnSupplies}
+                  onChange={(e) => setFormData({ ...formData, noTaxesOnSupplies: e.target.checked })}
+                />
+              }
+              label="Remind staff to split sales tax on supplies"
+              sx={{ mt: 2 }}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 4, display: 'block', mt: -1 }}>
+              Shows a supplies-specific tax split reminder on receipt screens.
             </Typography>
           </Box>
         </DialogContent>

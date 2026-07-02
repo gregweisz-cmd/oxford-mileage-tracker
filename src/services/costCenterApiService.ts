@@ -11,6 +11,8 @@ export interface CostCenter {
   description?: string;
   isActive: boolean;
   perDiemReceiptImageRequired?: boolean;
+  noTaxesOnReceipts?: boolean;
+  noTaxesOnSupplies?: boolean;
   createdAt: string;
   updatedAt: string;
 }

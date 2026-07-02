@@ -89,6 +89,7 @@ const PER_DIEM_POLICY_DEFINITIONS = [
       `Per diem only for overnight travel. ${NO_TAXES_NOTE}`
     ),
     descriptionAppend: NO_TAXES_NOTE,
+    noTaxesOnReceipts: true,
   },
   {
     key: 'NC-AHP',
@@ -97,6 +98,7 @@ const PER_DIEM_POLICY_DEFINITIONS = [
       `Per diem only for overnight travel. ${NO_TAXES_NOTE}`
     ),
     descriptionAppend: NO_TAXES_NOTE,
+    noTaxesOnReceipts: true,
   },
   {
     key: 'NC-MECKLENBURG',
@@ -105,12 +107,14 @@ const PER_DIEM_POLICY_DEFINITIONS = [
       `Per diem only for overnight travel. ${NO_TAXES_NOTE}`
     ),
     descriptionAppend: NO_TAXES_NOTE,
+    noTaxesOnReceipts: true,
   },
   {
     key: 'NC-DOGWOOD',
     matchers: ['NC.DOGWOOD', 'NC Dogwood'],
     perDiem: null,
     descriptionAppend: NO_TAXES_NOTE,
+    noTaxesOnReceipts: true,
   },
   {
     key: 'NC-CRIMINAL-JUSTICE',
@@ -125,6 +129,7 @@ const PER_DIEM_POLICY_DEFINITIONS = [
     ],
     perDiem: null,
     descriptionAppend: NO_TAXES_NOTE,
+    noTaxesOnReceipts: true,
   },
   {
     key: 'NV',
@@ -138,6 +143,7 @@ const PER_DIEM_POLICY_DEFINITIONS = [
     matchers: ['NY.UC-OSG', 'NY.UC', 'NY UC'],
     perDiem: null,
     descriptionAppend: NO_TAXES_NOTE,
+    noTaxesOnReceipts: true,
   },
   {
     key: 'OH-FRANKLIN-CO',
@@ -161,6 +167,7 @@ const PER_DIEM_POLICY_DEFINITIONS = [
       `Per diem only for overnight travel. ${NO_TAXES_SUPPLIES_NOTE}`
     ),
     descriptionAppend: NO_TAXES_SUPPLIES_NOTE,
+    noTaxesOnSupplies: true,
   },
 ];
 

@@ -516,6 +516,8 @@ function ensureTablesExist() {
         isActive INTEGER DEFAULT 1,
         enableGoogleMaps INTEGER DEFAULT 0,
         perDiemReceiptImageRequired INTEGER DEFAULT 0,
+        noTaxesOnReceipts INTEGER DEFAULT 0,
+        noTaxesOnSupplies INTEGER DEFAULT 0,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )`, (err) => {
@@ -596,6 +598,24 @@ function ensureTablesExist() {
                 debugWarn('Note: Could not add perDiemReceiptImageRequired column:', alterErr.message);
               } else {
                 debugLog('✅ Added perDiemReceiptImageRequired column to existing cost_centers table');
+              }
+            });
+          }
+          if (!columnNames.includes('noTaxesOnReceipts')) {
+            db.run(`ALTER TABLE cost_centers ADD COLUMN noTaxesOnReceipts INTEGER DEFAULT 0`, (alterErr) => {
+              if (alterErr) {
+                debugWarn('Note: Could not add noTaxesOnReceipts column:', alterErr.message);
+              } else {
+                debugLog('✅ Added noTaxesOnReceipts column to existing cost_centers table');
+              }
+            });
+          }
+          if (!columnNames.includes('noTaxesOnSupplies')) {
+            db.run(`ALTER TABLE cost_centers ADD COLUMN noTaxesOnSupplies INTEGER DEFAULT 0`, (alterErr) => {
+              if (alterErr) {
+                debugWarn('Note: Could not add noTaxesOnSupplies column:', alterErr.message);
+              } else {
+                debugLog('✅ Added noTaxesOnSupplies column to existing cost_centers table');
               }
             });
           }
@@ -1608,6 +1628,8 @@ function createSampleDatabase() {
           isActive INTEGER DEFAULT 1,
           enableGoogleMaps INTEGER DEFAULT 0,
           perDiemReceiptImageRequired INTEGER DEFAULT 0,
+        noTaxesOnReceipts INTEGER DEFAULT 0,
+        noTaxesOnSupplies INTEGER DEFAULT 0,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
         )`, (err) => {

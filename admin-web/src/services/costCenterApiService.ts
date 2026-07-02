@@ -6,6 +6,8 @@ interface CostCenter {
   isActive: boolean;
   enableGoogleMaps?: boolean;
   perDiemReceiptImageRequired?: boolean;
+  noTaxesOnReceipts?: boolean;
+  noTaxesOnSupplies?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -17,6 +19,8 @@ interface CostCenterCreateData {
   isActive?: boolean;
   enableGoogleMaps?: boolean;
   perDiemReceiptImageRequired?: boolean;
+  noTaxesOnReceipts?: boolean;
+  noTaxesOnSupplies?: boolean;
 }
 
 interface FinanceCostCenterAssignment {

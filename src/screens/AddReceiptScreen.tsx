@@ -36,8 +36,10 @@ import { ReceiptOcrService, OcrError } from '../services/receiptOcrService';
 import { COST_CENTERS } from '../constants/costCenters';
 import { ReceiptPhotoQualityService, PhotoQualityResult } from '../services/receiptPhotoQualityService';
 import { useTheme } from '../contexts/ThemeContext';
-import { costCenterApiService } from '../services/costCenterApiService';
+import { costCenterApiService, CostCenter } from '../services/costCenterApiService';
 import UnifiedHeader from '../components/UnifiedHeader';
+import { ReceiptTaxReminderBanner } from '../components/ReceiptTaxReminderBanner';
+import { getReceiptTaxReminder } from '../utils/receiptTaxReminder';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { useDismissStaleUiOnAppResume } from '../hooks/useDismissStaleUiOnAppResume';
 import { dismissKeyboardForSelection } from '../utils/formInteraction';
@@ -114,6 +116,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   const [isSplitMode, setIsSplitMode] = useState(false);
   const [splitAllocations, setSplitAllocations] = useState<SplitAllocation[]>([]);
   const [taxAmount, setTaxAmount] = useState('');
+  const [costCenterCatalog, setCostCenterCatalog] = useState<CostCenter[]>([]);
 
   const assignedCostCenters = React.useMemo(() => {
     const list = [
@@ -125,6 +128,15 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       .filter((value): value is string => !!value);
     return Array.from(new Set(list));
   }, [currentEmployee]);
+
+  const receiptTaxReminder = React.useMemo(
+    () =>
+      getReceiptTaxReminder(costCenterCatalog, assignedCostCenters, {
+        activeCostCenter: selectedCostCenter || assignedCostCenters[0],
+        platform: 'mobile',
+      }),
+    [costCenterCatalog, assignedCostCenters, selectedCostCenter]
+  );
 
   useEffect(() => {
     if (!selectedCostCenter && assignedCostCenters.length > 0) {
@@ -331,6 +343,13 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       console.log('📄 AddReceiptScreen: Current employee loaded:', employee?.name, employee?.id);
       console.log('📄 AddReceiptScreen: Employee cost centers:', employee?.selectedCostCenters);
       setCurrentEmployee(employee);
+
+      try {
+        const catalog = await costCenterApiService.getCostCenters();
+        setCostCenterCatalog(catalog);
+      } catch (catalogError) {
+        console.warn('AddReceiptScreen: Failed to load cost center catalog', catalogError);
+      }
       
       // Initialize cost center
       if (employee) {
@@ -1893,6 +1912,12 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         )}
 
         {/* Cost Center Selector - show if user has cost centers assigned */}
+        {receiptTaxReminder && (
+          <View style={styles.inputGroup}>
+            <ReceiptTaxReminderBanner reminder={receiptTaxReminder} />
+          </View>
+        )}
+
         {assignedCostCenters.length > 0 && (
           <View style={styles.inputGroup}>
             <Text style={[styles.label, dynamicStyles.label]}>Cost Center</Text>

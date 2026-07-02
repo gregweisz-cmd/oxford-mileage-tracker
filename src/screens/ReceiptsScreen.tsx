@@ -29,6 +29,9 @@ import { ApiSyncService } from '../services/apiSyncService';
 import { SyncIntegrationService } from '../services/syncIntegrationService';
 import { getSyncMonthScope } from '../services/syncScopeService';
 import { searchTextInputProps } from '../utils/keyboardDismiss';
+import { costCenterApiService, CostCenter } from '../services/costCenterApiService';
+import { ReceiptTaxReminderBanner } from '../components/ReceiptTaxReminderBanner';
+import { getReceiptTaxReminder } from '../utils/receiptTaxReminder';
 
 const RECEIPT_CATEGORIES = [
   'EES',
@@ -75,6 +78,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   const [selectedReceiptIds, setSelectedReceiptIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [allReceipts, setAllReceipts] = useState<Receipt[]>([]);
+  const [costCenterCatalog, setCostCenterCatalog] = useState<CostCenter[]>([]);
   
   // Filter states
   const [showFilters, setShowFilters] = useState(false);
@@ -202,6 +206,13 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
 
       if (employee) {
         setCurrentEmployee(employee);
+
+        try {
+          const catalog = await costCenterApiService.getCostCenters();
+          setCostCenterCatalog(catalog);
+        } catch (catalogError) {
+          console.warn('ReceiptsScreen: Failed to load cost center catalog', catalogError);
+        }
 
         await DatabaseService.dedupePerDiemReceiptsForMonth(
           employee.id,
@@ -748,6 +759,15 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     ]
   );
 
+  const receiptTaxReminder = React.useMemo(() => {
+    const employeeCostCenters = [
+      ...(currentEmployee?.selectedCostCenters || []),
+      ...(currentEmployee?.costCenters || []),
+      ...(currentEmployee?.defaultCostCenter ? [currentEmployee.defaultCostCenter] : []),
+    ];
+    return getReceiptTaxReminder(costCenterCatalog, employeeCostCenters, { platform: 'mobile' });
+  }, [currentEmployee, costCenterCatalog]);
+
   const receiptKeyExtractor = useCallback((receipt: Receipt) => receipt.id, []);
 
   if (loading) {
@@ -790,6 +810,11 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
         }
         ListHeaderComponent={
           <>
+        {receiptTaxReminder && (
+          <View style={styles.taxReminderContainer}>
+            <ReceiptTaxReminderBanner reminder={receiptTaxReminder} />
+          </View>
+        )}
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <MaterialIcons name="search" size={20} color="#999" style={styles.searchIcon} />
@@ -1338,6 +1363,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  taxReminderContainer: {
+    marginBottom: 4,
   },
   searchContainer: {
     flexDirection: 'row',

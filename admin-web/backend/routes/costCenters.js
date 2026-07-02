@@ -178,7 +178,16 @@ router.get('/api/cost-centers/:id', (req, res) => {
  * Create new cost center
  */
 router.post('/api/cost-centers', (req, res) => {
-  const { name, description, isActive, code, enableGoogleMaps, perDiemReceiptImageRequired } = req.body;
+  const {
+    name,
+    description,
+    isActive,
+    code,
+    enableGoogleMaps,
+    perDiemReceiptImageRequired,
+    noTaxesOnReceipts,
+    noTaxesOnSupplies,
+  } = req.body;
   const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
   const now = new Date().toISOString();
   
@@ -187,8 +196,8 @@ router.post('/api/cost-centers', (req, res) => {
   
   const db = dbService.getDb();
   db.run(
-    'INSERT INTO cost_centers (id, code, name, description, isActive, enableGoogleMaps, perDiemReceiptImageRequired, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, costCenterCode, name, description || '', isActive !== false ? 1 : 0, enableGoogleMaps ? 1 : 0, perDiemReceiptImageRequired ? 1 : 0, now, now],
+    'INSERT INTO cost_centers (id, code, name, description, isActive, enableGoogleMaps, perDiemReceiptImageRequired, noTaxesOnReceipts, noTaxesOnSupplies, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, costCenterCode, name, description || '', isActive !== false ? 1 : 0, enableGoogleMaps ? 1 : 0, perDiemReceiptImageRequired ? 1 : 0, noTaxesOnReceipts ? 1 : 0, noTaxesOnSupplies ? 1 : 0, now, now],
     function(err) {
       if (err) {
         debugError('❌ Error creating cost center:', err);
@@ -203,6 +212,8 @@ router.post('/api/cost-centers', (req, res) => {
         isActive: isActive !== false,
         enableGoogleMaps: enableGoogleMaps ? true : false,
         perDiemReceiptImageRequired: perDiemReceiptImageRequired ? true : false,
+        noTaxesOnReceipts: noTaxesOnReceipts ? true : false,
+        noTaxesOnSupplies: noTaxesOnSupplies ? true : false,
         createdAt: now,
         updatedAt: now
       });
@@ -215,20 +226,33 @@ router.post('/api/cost-centers', (req, res) => {
  */
 router.put('/api/cost-centers/:id', (req, res) => {
   const { id } = req.params;
-  const { name, description, isActive, code, enableGoogleMaps, perDiemReceiptImageRequired } = req.body;
+  const {
+    name,
+    description,
+    isActive,
+    code,
+    enableGoogleMaps,
+    perDiemReceiptImageRequired,
+    noTaxesOnReceipts,
+    noTaxesOnSupplies,
+  } = req.body;
   const now = new Date().toISOString();
   const perDiemRequiredValue =
     typeof perDiemReceiptImageRequired === 'boolean'
       ? (perDiemReceiptImageRequired ? 1 : 0)
       : null;
+  const noTaxesOnReceiptsValue =
+    typeof noTaxesOnReceipts === 'boolean' ? (noTaxesOnReceipts ? 1 : 0) : null;
+  const noTaxesOnSuppliesValue =
+    typeof noTaxesOnSupplies === 'boolean' ? (noTaxesOnSupplies ? 1 : 0) : null;
   
   // Generate code from name if not provided
   const costCenterCode = code || name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   
   const db = dbService.getDb();
   db.run(
-    'UPDATE cost_centers SET code = ?, name = ?, description = ?, isActive = ?, enableGoogleMaps = ?, perDiemReceiptImageRequired = COALESCE(?, perDiemReceiptImageRequired), updatedAt = ? WHERE id = ?',
-    [costCenterCode, name, description || '', isActive !== false ? 1 : 0, enableGoogleMaps ? 1 : 0, perDiemRequiredValue, now, id],
+    'UPDATE cost_centers SET code = ?, name = ?, description = ?, isActive = ?, enableGoogleMaps = ?, perDiemReceiptImageRequired = COALESCE(?, perDiemReceiptImageRequired), noTaxesOnReceipts = COALESCE(?, noTaxesOnReceipts), noTaxesOnSupplies = COALESCE(?, noTaxesOnSupplies), updatedAt = ? WHERE id = ?',
+    [costCenterCode, name, description || '', isActive !== false ? 1 : 0, enableGoogleMaps ? 1 : 0, perDiemRequiredValue, noTaxesOnReceiptsValue, noTaxesOnSuppliesValue, now, id],
     function(err) {
       if (err) {
         debugError('❌ Error updating cost center:', err);
@@ -247,6 +271,8 @@ router.put('/api/cost-centers/:id', (req, res) => {
         isActive: isActive !== false,
         enableGoogleMaps: enableGoogleMaps ? true : false,
         perDiemReceiptImageRequired: perDiemRequiredValue == null ? undefined : !!perDiemRequiredValue,
+        noTaxesOnReceipts: noTaxesOnReceiptsValue == null ? undefined : !!noTaxesOnReceiptsValue,
+        noTaxesOnSupplies: noTaxesOnSuppliesValue == null ? undefined : !!noTaxesOnSuppliesValue,
         updatedAt: now
       });
     }
