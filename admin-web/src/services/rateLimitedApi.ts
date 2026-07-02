@@ -35,8 +35,8 @@ class RateLimitedApiService {
   private requestQueue: RequestQueueItem[] = [];
   private isProcessing = false;
   private lastRequestTime = 0;
-  private minRequestInterval = 100; // Minimum 100ms between requests
-  private maxRetries = 3;
+  private minRequestInterval = 150; // Minimum 150ms between requests
+  private maxRetries = 5;
   private retryDelay = 1000; // Start with 1 second
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
   private cacheTTL = 60000; // 60 seconds cache (increased to reduce API calls)

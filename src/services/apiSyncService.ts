@@ -73,8 +73,10 @@ export class ApiSyncService {
   private static async authenticatedFetch(
     input: RequestInfo | URL,
     init: RequestInit = {},
-    isAuthRetry = false
+    isAuthRetry = false,
+    rateLimitRetry = 0
   ): Promise<Response> {
+    const MAX_RATE_LIMIT_RETRIES = 4;
     const response = await fetch(input, {
       ...init,
       headers: {
@@ -85,8 +87,30 @@ export class ApiSyncService {
     if (response.status === 401 && !isAuthRetry) {
       const refreshed = await refreshAuthSessionAfter401();
       if (refreshed) {
-        return this.authenticatedFetch(input, init, true);
+        return this.authenticatedFetch(input, init, true, rateLimitRetry);
       }
+    }
+    if (response.status === 429 && rateLimitRetry < MAX_RATE_LIMIT_RETRIES) {
+      const retryAfterHeader = response.headers.get('Retry-After');
+      const rateLimitReset = response.headers.get('RateLimit-Reset');
+      let delayMs = 1000 * Math.pow(2, rateLimitRetry);
+      if (retryAfterHeader) {
+        const seconds = parseInt(retryAfterHeader, 10);
+        if (!Number.isNaN(seconds)) {
+          delayMs = Math.max(seconds * 1000, 500);
+        }
+      } else if (rateLimitReset) {
+        const resetAt = parseInt(rateLimitReset, 10);
+        if (!Number.isNaN(resetAt)) {
+          delayMs = Math.max(resetAt * 1000 - Date.now(), 500);
+        }
+      }
+      delayMs = Math.min(delayMs, 30_000);
+      debugWarn(
+        `⚠️ ApiSync: Rate limited (429), retrying in ${delayMs}ms (${rateLimitRetry + 1}/${MAX_RATE_LIMIT_RETRIES})`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return this.authenticatedFetch(input, init, isAuthRetry, rateLimitRetry + 1);
     }
     return response;
   }

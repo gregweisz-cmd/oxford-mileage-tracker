@@ -243,19 +243,26 @@ export class SyncIntegrationService {
       timestamp: new Date(),
       retryCount: 0
     };
-    
-    // Check if this exact operation is already queued (prevent duplicates)
-    // Only check for duplicates within the last 10 seconds to allow legitimate updates
-    const recentDuplicates = this.syncQueue.filter(item => 
-      item.entityType === entityType && 
-      item.operation === operation &&
-      item.data.id === data.id &&
-      (new Date().getTime() - item.timestamp.getTime()) < 10000 // Within last 10 seconds
-    );
-    
-    if (recentDuplicates.length > 0) {
-      debugLog(`⚠️ SyncIntegration: Duplicate ${operation} for ${entityType} ${data.id} already queued recently, skipping`);
-      return;
+
+    // Coalesce create/update for the same entity — keep only the latest payload.
+    if (operation !== 'delete') {
+      const existingIdx = this.syncQueue.findIndex(
+        (item) => item.entityType === entityType && item.data.id === data.id && item.operation !== 'delete'
+      );
+      if (existingIdx >= 0) {
+        const existing = this.syncQueue[existingIdx];
+        this.syncQueue[existingIdx] = {
+          ...queueItem,
+          id: existing.id,
+          retryCount: existing.retryCount,
+        };
+        debugLog(`🔄 SyncIntegration: Coalesced ${operation} for ${entityType} ${data.id} (replaced queued item)`);
+        void this.persistQueueToStorage();
+        if (this.autoSyncEnabled) {
+          this.scheduleDebouncedSync();
+        }
+        return;
+      }
     }
     
     this.syncQueue.push(queueItem);
@@ -419,12 +426,6 @@ export class SyncIntegrationService {
       debugLog('🔄 SyncIntegration: Running periodic auto-sync');
       await this.processSyncQueue();
 
-      const queueStatus = this.getSyncQueueStatus();
-      const apiStatus = await ApiSyncService.getSyncStatus();
-      if (queueStatus.queueLength > 0 || apiStatus.pendingChanges > 0) {
-        await this.forceSync(currentEmployee.id);
-      }
-
       this.nextPeriodicSyncAt = Date.now() + this.periodicSyncMs;
 
       if (!skipPull) {
@@ -471,6 +472,10 @@ export class SyncIntegrationService {
       this.syncQueue = this.syncQueue.filter((item) => !succeededQueueItemIds.has(item.id));
       
       debugLog(`✅ SyncIntegration: Processed sync queue, ${this.syncQueue.length} items remaining`);
+
+      if (this.syncQueue.length === 0) {
+        ApiSyncService.resetPendingChanges();
+      }
       
     } catch (error) {
       console.error('❌ SyncIntegration: Error processing sync queue:', error);
@@ -548,7 +553,11 @@ export class SyncIntegrationService {
     entityType: 'employee' | 'mileageEntry' | 'receipt' | 'timeTracking' | 'dailyDescription' | 'dailyOdometerReading' | 'savedAddress' | 'flockHouse',
     operations: SyncQueueItem[]
   ): Promise<void> {
-    const entities = operations.map(op => op.data);
+    const entitiesById = new Map<string, unknown>();
+    for (const op of operations) {
+      entitiesById.set(op.data.id, op.data);
+    }
+    const entities = Array.from(entitiesById.values());
     
     const syncData: any = {};
     const key = entityType === 'mileageEntry' ? 'mileageEntries' :
@@ -643,18 +652,37 @@ export class SyncIntegrationService {
   }
 
   /**
-   * Force immediate sync of all pending changes
-   * Optionally sync all data for a specific employee
-   * Returns object with success status and error message if failed
+   * Force immediate sync of pending queued changes (does not re-push the entire local dataset).
    */
-  static async forceSync(employeeId?: string): Promise<{ success: boolean; error?: string }> {
+  static async forceSync(_employeeId?: string): Promise<{ success: boolean; error?: string }> {
     try {
-      debugLog('🔄 SyncIntegration: Force sync requested', employeeId ? `for employee ${employeeId}` : '');
-      
-      // Process queue immediately
+      debugLog('🔄 SyncIntegration: Force sync requested (queue only)');
       await this.processSyncQueue();
-      
-      // Get current employee if not provided
+
+      if (this.syncQueue.length > 0) {
+        const errorMsg = `${this.syncQueue.length} change(s) could not be synced. Check your connection and try again.`;
+        debugWarn(`⚠️ SyncIntegration: Force sync incomplete — ${this.syncQueue.length} item(s) remain in queue`);
+        return { success: false, error: errorMsg };
+      }
+
+      debugLog('✅ SyncIntegration: Force sync completed (queue drained)');
+      return { success: true };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred during sync';
+      console.error('❌ SyncIntegration: Force sync error:', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  }
+
+  /**
+   * Re-push all local data for an employee (heavy — use only for repair / data recovery).
+   */
+  static async repairFullSync(employeeId?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      debugLog('🔄 SyncIntegration: Repair full sync requested', employeeId ? `for employee ${employeeId}` : '');
+
+      await this.processSyncQueue();
+
       let currentEmployeeId = employeeId;
       if (!currentEmployeeId) {
         const currentEmployee = await DatabaseService.getCurrentEmployee();
@@ -662,81 +690,49 @@ export class SyncIntegrationService {
           currentEmployeeId = currentEmployee.id;
         }
       }
-      
-      // Always do a full sync for the current employee (syncs all local data)
-      if (currentEmployeeId) {
-        debugLog(`🔄 SyncIntegration: Performing full sync for employee ${currentEmployeeId}`);
-        
-        // Get all data for the current employee
-        const employees = await DatabaseService.getEmployees();
-        const currentEmployee = employees.find(e => e.id === currentEmployeeId);
-        
-        // Get all mileage entries for current employee
-        const mileageEntries = await DatabaseService.getMileageEntries(currentEmployeeId);
-        
-        // Get all receipts for current employee
-        const receipts = await DatabaseService.getReceipts(currentEmployeeId);
-        
-        // Get all time tracking for current employee
-        const allTimeTracking = await DatabaseService.getAllTimeTrackingEntries();
-        const timeTracking = allTimeTracking.filter(t => t.employeeId === currentEmployeeId);
 
-      // Get all daily descriptions for current employee
+      if (!currentEmployeeId) {
+        return { success: true };
+      }
+
+      const employees = await DatabaseService.getEmployees();
+      const currentEmployee = employees.find((e) => e.id === currentEmployeeId);
+      const mileageEntries = await DatabaseService.getMileageEntries(currentEmployeeId);
+      const receipts = await DatabaseService.getReceipts(currentEmployeeId);
+      const allTimeTracking = await DatabaseService.getAllTimeTrackingEntries();
+      const timeTracking = allTimeTracking.filter((t) => t.employeeId === currentEmployeeId);
       const dailyDescriptions = await DatabaseService.getDailyDescriptions(currentEmployeeId);
-
       const savedAddresses = await DatabaseService.getSavedAddresses(currentEmployeeId);
-
       const flockHouses = await DatabaseService.getFlockHouses(currentEmployeeId);
-        
-        // Sync employee data (just the current employee)
-        const employeeData = currentEmployee ? [currentEmployee] : [];
-        
-        const result = await ApiSyncService.syncToBackend({
-          employees: employeeData,
-          mileageEntries,
-          receipts,
+      const employeeData = currentEmployee ? [currentEmployee] : [];
+
+      const result = await ApiSyncService.syncToBackend({
+        employees: employeeData,
+        mileageEntries,
+        receipts,
         timeTracking,
         dailyDescriptions,
         savedAddresses,
         flockHouses,
-        });
-        
-        if (result.success) {
-          debugLog(`✅ SyncIntegration: Force sync completed successfully for employee ${currentEmployeeId}`);
-          return { success: true };
-        } else {
-          // Check if any data was successfully synced
-          const results = result.data || [];
-          const successfulSyncs = results.filter((r: any) => r.success);
-          const failedSyncs = results.filter((r: any) => !r.success);
-          
-          // If at least one sync type succeeded, report as success with a warning about partial failures
-          if (successfulSyncs.length > 0) {
-            const errorMsg = result.error || 'Some sync operations failed';
-            debugLog(`⚠️ SyncIntegration: Partial sync success - ${successfulSyncs.length} succeeded, ${failedSyncs.length} failed`);
-            
-            // Return success but with a warning message about partial failures
-            // The error message from syncToBackend already contains details about what failed
-            const warningMsg = `Sync completed, but some data types had errors. ${errorMsg}`;
-            
-            return { 
-              success: true, 
-              error: warningMsg
-            };
-          }
-          
-          // All syncs failed
-          const errorMsg = result.error || 'Unknown sync error';
-          console.error('❌ SyncIntegration: Force sync failed:', errorMsg);
-          return { success: false, error: errorMsg };
-        }
+      });
+
+      if (result.success) {
+        return { success: true };
       }
-      
-      // If no employee ID available, just return success (queue was processed)
-      return { success: true };
+
+      const results = result.data || [];
+      const successfulSyncs = results.filter((r: any) => r.success);
+      if (successfulSyncs.length > 0) {
+        return {
+          success: true,
+          error: `Sync completed, but some data types had errors. ${result.error || ''}`.trim(),
+        };
+      }
+
+      return { success: false, error: result.error || 'Unknown sync error' };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred during sync';
-      console.error('❌ SyncIntegration: Force sync error:', errorMsg);
+      console.error('❌ SyncIntegration: Repair full sync error:', errorMsg);
       return { success: false, error: errorMsg };
     }
   }

@@ -39,7 +39,7 @@ function userOrIpKey(req) {
  */
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 1000 : 1000, // Increased to 1000 for production (allows ~66 requests per minute) to handle sync operations
+  max: process.env.NODE_ENV === 'production' ? 3000 : 1000, // ~200/min per user — sync bursts (receipts, mileage) need headroom
   message: {
     error: 'Too many requests, please try again later.',
     retryAfter: '15 minutes'
@@ -151,7 +151,7 @@ const adminLimiter = rateLimit({
  */
 const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 30,
+  max: 60,
   message: {
     error: 'Too many file uploads, please try again later.',
     retryAfter: '1 hour'

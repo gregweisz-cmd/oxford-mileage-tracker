@@ -4156,7 +4156,6 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           imageUri: imageDataUrl,
           fileType: 'image',
         });
-        await syncReportData();
         showSuccess('Receipt image updated');
       }
     } catch (error) {
