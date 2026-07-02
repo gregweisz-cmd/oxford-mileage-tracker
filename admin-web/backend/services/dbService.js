@@ -1020,6 +1020,13 @@ function ensureTablesExist() {
               else debugLog('✅ Added hasCompletedSetupWizard column to employees table');
             });
           }
+
+          if (!columnNames.includes('onboardingResetAt')) {
+            db.run(`ALTER TABLE employees ADD COLUMN onboardingResetAt TEXT DEFAULT NULL`, (err) => {
+              if (err) debugLog('Note: onboardingResetAt column may already exist');
+              else debugLog('✅ Added onboardingResetAt column to employees table');
+            });
+          }
           
           if (!columnNames.includes('preferences')) {
             db.run(`ALTER TABLE employees ADD COLUMN preferences TEXT DEFAULT '{}'`, (err) => {

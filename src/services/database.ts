@@ -905,33 +905,30 @@ export class DatabaseService {
 
   static async setCompletedOnboarding(employeeId?: string): Promise<void> {
     const database = await getDatabase();
-    
-    // If employeeId is provided, update the employees table directly
-    if (employeeId) {
-      await database.runAsync(
-        'UPDATE employees SET hasCompletedOnboarding = 1 WHERE id = ?',
-        [employeeId]
-      );
-      // Also update current_employee for backward compatibility
-      await database.runAsync(
-        'UPDATE current_employee SET hasCompletedOnboarding = 1 WHERE employeeId = ?',
-        [employeeId]
-      );
-      return;
-    }
-    
-    // Otherwise, update via current_employee table
-    const currentSession = await this.getCurrentEmployeeSession();
-    if (currentSession?.employeeId) {
-      await database.runAsync(
-        'UPDATE employees SET hasCompletedOnboarding = 1 WHERE id = ?',
-        [currentSession.employeeId]
-      );
+    const resolveId = async (): Promise<string | null> => {
+      if (employeeId) return employeeId;
+      const currentSession = await this.getCurrentEmployeeSession();
+      return currentSession?.employeeId ?? null;
+    };
+    const id = await resolveId();
+    if (!id) return;
+
+    await database.runAsync(
+      'UPDATE employees SET hasCompletedOnboarding = 1 WHERE id = ?',
+      [id]
+    );
+    try {
       await database.runAsync(
         'UPDATE current_employee SET hasCompletedOnboarding = 1 WHERE employeeId = ?',
-        [currentSession.employeeId]
+        [id]
       );
+    } catch {
+      // current_employee row may not exist
     }
+
+    void ApiSyncService.updateEmployeeOnboardingFlags(id, { hasCompletedOnboarding: true }).catch((err) =>
+      debugWarn('Could not sync onboarding completion to server:', err)
+    );
   }
 
   static async hasCompletedSetupWizard(employeeId?: string): Promise<boolean> {
@@ -961,54 +958,91 @@ export class DatabaseService {
 
   static async setCompletedSetupWizard(employeeId?: string): Promise<void> {
     const database = await getDatabase();
-    
-    // If employeeId is provided, update the employees table directly
-    if (employeeId) {
-      await database.runAsync(
-        'UPDATE employees SET hasCompletedSetupWizard = 1 WHERE id = ?',
-        [employeeId]
-      );
-      // Also update current_employee for backward compatibility
-      await database.runAsync(
-        'UPDATE current_employee SET hasCompletedSetupWizard = 1 WHERE employeeId = ?',
-        [employeeId]
-      );
-      return;
-    }
-    
-    // Otherwise, update via current_employee table
-    const currentSession = await this.getCurrentEmployeeSession();
-    if (currentSession?.employeeId) {
-      await database.runAsync(
-        'UPDATE employees SET hasCompletedSetupWizard = 1 WHERE id = ?',
-        [currentSession.employeeId]
-      );
+    const resolveId = async (): Promise<string | null> => {
+      if (employeeId) return employeeId;
+      const currentSession = await this.getCurrentEmployeeSession();
+      return currentSession?.employeeId ?? null;
+    };
+    const id = await resolveId();
+    if (!id) return;
+
+    await database.runAsync(
+      'UPDATE employees SET hasCompletedSetupWizard = 1 WHERE id = ?',
+      [id]
+    );
+    try {
       await database.runAsync(
         'UPDATE current_employee SET hasCompletedSetupWizard = 1 WHERE employeeId = ?',
-        [currentSession.employeeId]
+        [id]
       );
+    } catch {
+      // current_employee row may not exist
     }
+
+    void ApiSyncService.updateEmployeeOnboardingFlags(id, { hasCompletedSetupWizard: true }).catch((err) =>
+      debugWarn('Could not sync setup wizard completion to server:', err)
+    );
   }
 
   /** Apply onboarding/setup flags from backend (e.g. after admin reset or login). */
   static async applyOnboardingFlagsFromBackend(
     employeeId: string,
-    flags: { hasCompletedOnboarding?: unknown; hasCompletedSetupWizard?: unknown }
+    flags: {
+      hasCompletedOnboarding?: unknown;
+      hasCompletedSetupWizard?: unknown;
+      onboardingResetAt?: unknown;
+    }
   ): Promise<void> {
     const toInt = (value: unknown) => (value === true || value === 1 || value === '1' ? 1 : 0);
-    const onboarding = toInt(flags.hasCompletedOnboarding);
-    const setupWizard = toInt(flags.hasCompletedSetupWizard);
-    const now = new Date().toISOString();
+    const backendOn = toInt(flags.hasCompletedOnboarding);
+    const backendWizard = toInt(flags.hasCompletedSetupWizard);
+    const localOn = (await this.hasCompletedOnboarding(employeeId)) ? 1 : 0;
+    const localWizard = (await this.hasCompletedSetupWizard(employeeId)) ? 1 : 0;
 
+    let finalOn = backendOn || localOn ? 1 : 0;
+    let finalWizard = backendWizard || localWizard ? 1 : 0;
+
+    const resetAtRaw = flags.onboardingResetAt;
+    if (resetAtRaw && backendOn === 0 && backendWizard === 0) {
+      const resetMs = Date.parse(String(resetAtRaw));
+      if (Number.isFinite(resetMs)) {
+        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+        const ackKey = `onboardingResetAck:${employeeId}`;
+        const acked = await AsyncStorage.getItem(ackKey);
+        const ackMs = acked ? parseInt(acked, 10) : 0;
+        if (resetMs > ackMs) {
+          finalOn = 0;
+          finalWizard = 0;
+          await AsyncStorage.setItem(ackKey, String(resetMs));
+        }
+      }
+    }
+
+    if (finalOn && !backendOn) {
+      void ApiSyncService.updateEmployeeOnboardingFlags(employeeId, {
+        hasCompletedOnboarding: true,
+        ...(finalWizard && !backendWizard ? { hasCompletedSetupWizard: true } : {}),
+      }).catch((err) => debugWarn('Could not backfill onboarding flags to server:', err));
+    } else if (finalWizard && !backendWizard) {
+      void ApiSyncService.updateEmployeeOnboardingFlags(employeeId, {
+        hasCompletedSetupWizard: true,
+      }).catch((err) => debugWarn('Could not backfill setup wizard flag to server:', err));
+    }
+
+    if (finalOn === localOn && finalWizard === localWizard) {
+      return;
+    }
+
+    const now = new Date().toISOString();
     await withDatabase(async (database) => {
       await database.runAsync(
         'UPDATE employees SET hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, updatedAt = ? WHERE id = ?',
-        [onboarding, setupWizard, now, employeeId]
+        [finalOn, finalWizard, now, employeeId]
       );
       try {
         await database.runAsync(
           'UPDATE current_employee SET hasCompletedOnboarding = ?, hasCompletedSetupWizard = ? WHERE employeeId = ?',
-          [onboarding, setupWizard, employeeId]
+          [finalOn, finalWizard, employeeId]
         );
       } catch {
         // current_employee row may not exist when not logged in as this user

@@ -9,7 +9,6 @@ import {
   View,
   Image,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
   Text,
   ActivityIndicator,
@@ -23,7 +22,6 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { RootStackParamList } from '../types';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HANDLE_SIZE = 44;
 const MIN_CROP = 50;
 const CROP_BORDER_WIDTH = 2;
@@ -41,22 +39,23 @@ export default function ReceiptCropScreen() {
   const receiptIdToUpdate = params.receiptIdToUpdate;
 
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
-  const [containerLayout, setContainerLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(null);
   const [crop, setCrop] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const imageDisplayRect = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
-  const containerRef = useRef<View>(null);
   const lastCropRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
-  const containerLayoutRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const panSessionRef = useRef<{
+    handle: string;
+    startCrop: { x: number; y: number; width: number; height: number };
+  } | null>(null);
   const clampCropRef = useRef<(c: { x: number; y: number; width: number; height: number }) => { x: number; y: number; width: number; height: number }>((c) => c);
   lastCropRef.current = crop;
-  containerLayoutRef.current = containerLayout;
 
   // Compute the rect where the image is actually drawn (contain mode)
   const updateImageDisplayRect = useCallback(() => {
-    if (!containerLayout || !imageSize) return;
-    const { width: cw, height: ch } = containerLayout;
+    if (!containerSize || !imageSize) return;
+    const { width: cw, height: ch } = containerSize;
     const { width: iw, height: ih } = imageSize;
     const scale = Math.min(cw / iw, ch / ih);
     const dw = iw * scale;
@@ -64,7 +63,7 @@ export default function ReceiptCropScreen() {
     const x = (cw - dw) / 2;
     const y = (ch - dh) / 2;
     imageDisplayRect.current = { x, y, width: dw, height: dh };
-  }, [containerLayout, imageSize]);
+  }, [containerSize, imageSize]);
 
   // Load image dimensions (no blocking normalize so crop screen appears immediately)
   useEffect(() => {
@@ -87,7 +86,7 @@ export default function ReceiptCropScreen() {
     if (r && r.width >= 50 && r.height >= 50 && !crop) {
       setCrop({ x: r.x, y: r.y, width: r.width, height: r.height });
     }
-  }, [containerLayout, imageSize, updateImageDisplayRect]);
+  }, [containerSize, imageSize, updateImageDisplayRect]);
 
   const clampCrop = useCallback((c: { x: number; y: number; width: number; height: number }) => {
     const r = imageDisplayRect.current;
@@ -105,12 +104,10 @@ export default function ReceiptCropScreen() {
     const current = lastCropRef.current;
     if (!current) return 'center';
     const { x, y, width, height } = current;
-    const cx = x + width / 2;
-    const cy = y + height / 2;
+    if (px >= x + width - HANDLE_SIZE && py >= y + height - HANDLE_SIZE) return 'br';
     if (px <= x + HANDLE_SIZE && py <= y + HANDLE_SIZE) return 'tl';
     if (px >= x + width - HANDLE_SIZE && py <= y + HANDLE_SIZE) return 'tr';
     if (px <= x + HANDLE_SIZE && py >= y + height - HANDLE_SIZE) return 'bl';
-    if (px >= x + width - HANDLE_SIZE && py >= y + height - HANDLE_SIZE) return 'br';
     if (px <= x + HANDLE_SIZE) return 'l';
     if (px >= x + width - HANDLE_SIZE) return 'r';
     if (py <= y + HANDLE_SIZE) return 't';
@@ -118,72 +115,84 @@ export default function ReceiptCropScreen() {
     return 'center';
   }, []);
 
+  const applyHandleDrag = useCallback(
+    (
+      start: { x: number; y: number; width: number; height: number },
+      handle: string,
+      dx: number,
+      dy: number
+    ) => {
+      let next = { ...start };
+      if (handle === 'center') {
+        next.x = start.x + dx;
+        next.y = start.y + dy;
+      } else if (handle === 'tl') {
+        next.x = start.x + dx;
+        next.y = start.y + dy;
+        next.width = start.width - dx;
+        next.height = start.height - dy;
+      } else if (handle === 'tr') {
+        next.y = start.y + dy;
+        next.width = start.width + dx;
+        next.height = start.height - dy;
+      } else if (handle === 'bl') {
+        next.x = start.x + dx;
+        next.width = start.width - dx;
+        next.height = start.height + dy;
+      } else if (handle === 'br') {
+        next.width = start.width + dx;
+        next.height = start.height + dy;
+      } else if (handle === 't') {
+        next.y = start.y + dy;
+        next.height = start.height - dy;
+      } else if (handle === 'b') {
+        next.height = start.height + dy;
+      } else if (handle === 'l') {
+        next.x = start.x + dx;
+        next.width = start.width - dx;
+      } else if (handle === 'r') {
+        next.width = start.width + dx;
+      }
+      return clampCropRef.current(next);
+    },
+    []
+  );
+
+  const hitTestRef = useRef(hitTest);
+  hitTestRef.current = hitTest;
+  const applyHandleDragRef = useRef(applyHandleDrag);
+  applyHandleDragRef.current = applyHandleDrag;
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (_, g) => {
-        const layout = containerLayoutRef.current ?? { x: 0, y: 0, width: SCREEN_WIDTH, height: SCREEN_HEIGHT };
-        const localX = g.moveX - layout.x;
-        const localY = g.moveY - layout.y;
-        const handle = hitTest(localX, localY);
-        (panResponder as any).currentHandle = handle;
-        (panResponder as any).startCrop = lastCropRef.current ? { ...lastCropRef.current } : null;
-        (panResponder as any).startX = g.moveX;
-        (panResponder as any).startY = g.moveY;
+        const current = lastCropRef.current;
+        if (!current) return;
+        const handle = hitTestRef.current(g.locationX, g.locationY);
+        panSessionRef.current = {
+          handle,
+          startCrop: { ...current },
+        };
       },
       onPanResponderMove: (_, g) => {
-        const start = (panResponder as any).startCrop as { x: number; y: number; width: number; height: number } | null;
-        if (!start) return;
-        const handle = (panResponder as any).currentHandle as string;
-        const dx = g.moveX - (panResponder as any).startX;
-        const dy = g.moveY - (panResponder as any).startY;
-        (panResponder as any).startX = g.moveX;
-        (panResponder as any).startY = g.moveY;
-
-        let next = { ...start };
-        if (handle === 'center') {
-          next.x = start.x + dx;
-          next.y = start.y + dy;
-        } else if (handle === 'tl') {
-          next.x = start.x + dx;
-          next.y = start.y + dy;
-          next.width = start.width - dx;
-          next.height = start.height - dy;
-        } else if (handle === 'tr') {
-          next.y = start.y + dy;
-          next.width = start.width + dx;
-          next.height = start.height - dy;
-        } else if (handle === 'bl') {
-          next.x = start.x + dx;
-          next.width = start.width - dx;
-          next.height = start.height + dy;
-        } else if (handle === 'br') {
-          next.width = start.width + dx;
-          next.height = start.height + dy;
-        } else if (handle === 't') {
-          next.y = start.y + dy;
-          next.height = start.height - dy;
-        } else if (handle === 'b') {
-          next.height = start.height + dy;
-        } else if (handle === 'l') {
-          next.x = start.x + dx;
-          next.width = start.width - dx;
-        } else if (handle === 'r') {
-          next.width = start.width + dx;
-        }
-        const clamped = clampCropRef.current(next);
-        setCrop(clamped);
-        (panResponder as any).startCrop = clamped;
+        const session = panSessionRef.current;
+        if (!session) return;
+        const next = applyHandleDragRef.current(session.startCrop, session.handle, g.dx, g.dy);
+        setCrop(next);
       },
-      onPanResponderRelease: () => {},
+      onPanResponderRelease: () => {
+        panSessionRef.current = null;
+      },
+      onPanResponderTerminate: () => {
+        panSessionRef.current = null;
+      },
     })
   ).current;
 
-  const onContainerLayout = useCallback(() => {
-    containerRef.current?.measureInWindow((x, y, width, height) => {
-      setContainerLayout({ x, y, width, height });
-    });
+  const onContainerLayout = useCallback((width: number, height: number) => {
+    setContainerSize({ width, height });
   }, []);
 
   /** Use the original image without cropping (best for OCR so the full receipt is visible). */
@@ -289,9 +298,16 @@ export default function ReceiptCropScreen() {
         <Text style={styles.useFullImageHint}>Best for OCR – keeps entire receipt visible</Text>
       </View>
 
-      <View ref={containerRef} style={styles.imageContainer} onLayout={onContainerLayout} {...panResponder.panHandlers}>
+      <View
+        style={styles.imageContainer}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          onContainerLayout(width, height);
+        }}
+        {...panResponder.panHandlers}
+      >
         <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} resizeMode="contain" />
-        {containerLayout && crop && (
+        {containerSize && crop && (
           <>
             {/* Dimmed overlay (4 regions around crop) */}
             <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
@@ -319,7 +335,6 @@ export default function ReceiptCropScreen() {
   );
 }
 
-// Fix: PanResponder grant/move need latest crop; store startCrop on grant and use it in move
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },

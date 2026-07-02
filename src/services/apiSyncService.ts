@@ -120,6 +120,31 @@ export class ApiSyncService {
     return this.authenticatedFetch(url, { method: 'DELETE' });
   }
 
+  /** Push onboarding / setup-wizard completion flags to the server. */
+  static async updateEmployeeOnboardingFlags(
+    localEmployeeId: string,
+    flags: { hasCompletedOnboarding?: boolean; hasCompletedSetupWizard?: boolean }
+  ): Promise<void> {
+    const backendId = await this.resolveBackendEmployeeId(localEmployeeId);
+    const id = backendId || localEmployeeId;
+    const body: Record<string, unknown> = { settingsSource: 'user-settings' };
+    if (flags.hasCompletedOnboarding !== undefined) {
+      body.hasCompletedOnboarding = flags.hasCompletedOnboarding;
+    }
+    if (flags.hasCompletedSetupWizard !== undefined) {
+      body.hasCompletedSetupWizard = flags.hasCompletedSetupWizard;
+    }
+    const response = await this.authenticatedFetch(`${this.config.baseUrl}/employees/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(this.formatHttpFailure(response, detail));
+    }
+  }
+
   /** For thrown sync errors when `response.ok` is false (prefers JSON `error` field). */
   private static formatHttpFailure(response: Response, bodyText: string): string {
     const status = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
@@ -738,7 +763,9 @@ export class ApiSyncService {
                 phoneNumber: employee.phoneNumber,
                 baseAddress: employee.baseAddress,
                 baseAddress2: employee.baseAddress2,
-                costCenters: employee.costCenters
+                costCenters: employee.costCenters,
+                hasCompletedOnboarding: employee.hasCompletedOnboarding,
+                hasCompletedSetupWizard: employee.hasCompletedSetupWizard,
               })
             });
 
@@ -2849,6 +2876,7 @@ export class ApiSyncService {
           await DatabaseService.applyOnboardingFlagsFromBackend(localLookupId, {
             hasCompletedOnboarding: backendEmp.hasCompletedOnboarding,
             hasCompletedSetupWizard: backendEmp.hasCompletedSetupWizard,
+            onboardingResetAt: (backendEmp as { onboardingResetAt?: string }).onboardingResetAt,
           });
           debugLog(`🔄 ApiSync: Updated local employee ${localLookupId} (${backendEmp.name}) from backend`);
         } catch (err) {

@@ -151,6 +151,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       await DatabaseService.applyOnboardingFlagsFromBackend(canonicalId, {
         hasCompletedOnboarding: employeeData.hasCompletedOnboarding,
         hasCompletedSetupWizard: employeeData.hasCompletedSetupWizard,
+        onboardingResetAt: employeeData.onboardingResetAt,
       });
 
       const updatedEmployee = await DatabaseService.getEmployeeById(canonicalId);
@@ -180,6 +181,7 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
     await DatabaseService.applyOnboardingFlagsFromBackend(employeeData.id, {
       hasCompletedOnboarding: employeeData.hasCompletedOnboarding,
       hasCompletedSetupWizard: employeeData.hasCompletedSetupWizard,
+      onboardingResetAt: employeeData.onboardingResetAt,
     });
 
     await DatabaseService.setCurrentEmployee(employeeData.id, persistStayLoggedIn);

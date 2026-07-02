@@ -1225,8 +1225,8 @@ router.post('/api/employees/:id/reset-onboarding', requireAnyRole(['admin']), (r
 
   const now = new Date().toISOString();
   db.run(
-    'UPDATE employees SET hasCompletedOnboarding = 0, hasCompletedSetupWizard = 0, updatedAt = ? WHERE id = ?',
-    [now, id],
+    'UPDATE employees SET hasCompletedOnboarding = 0, hasCompletedSetupWizard = 0, onboardingResetAt = ?, updatedAt = ? WHERE id = ?',
+    [now, now, id],
     function(err) {
       if (err) {
         debugError('Error resetting onboarding:', err);
@@ -1246,6 +1246,7 @@ router.post('/api/employees/:id/reset-onboarding', requireAnyRole(['admin']), (r
         message: 'Onboarding reset. User will see intro slides and setup wizard on next login.',
         hasCompletedOnboarding: false,
         hasCompletedSetupWizard: false,
+        onboardingResetAt: now,
       });
     }
   );

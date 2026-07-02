@@ -16,6 +16,7 @@ export interface Employee {
   typicalWorkEndHour?: number; // Typical work end hour (0-23)
   hasCompletedSetupWizard?: boolean; // Whether the employee has completed the setup wizard
   hasCompletedOnboarding?: boolean; // Whether the employee has completed the onboarding flow
+  onboardingResetAt?: string; // Server timestamp when admin last reset onboarding
   createdAt: Date;
   updatedAt: Date;
 }
