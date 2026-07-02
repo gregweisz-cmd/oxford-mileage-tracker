@@ -54,8 +54,8 @@ function overnightOnlyRule(description, amount = 35) {
  * Each entry targets one or more cost centers. Set `perDiem` to null to leave
  * existing per-diem rules untouched (description / flags only).
  *
- * Matchers are normalized (case/punctuation insensitive). Use `matchPrefix`
- * for state-wide rules (e.g. all NV cost centers).
+ * Matchers use exact normalized name/code equality (case/punctuation insensitive).
+ * Use `matchPrefix` for state-wide rules (e.g. all NV cost centers).
  */
 const PER_DIEM_POLICY_DEFINITIONS = [
   {
@@ -118,6 +118,7 @@ const PER_DIEM_POLICY_DEFINITIONS = [
       'NC.CJ',
       'NC CJ',
       'NC Criminal Justice',
+      'NC CRIMINAL JUSTICE',
       'NC.CRIMINAL',
       'NC-CRIMINAL',
       'NC.CRIMINAL-JUSTICE',

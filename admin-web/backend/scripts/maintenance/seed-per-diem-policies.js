@@ -36,19 +36,15 @@ function rowMatchesPolicy(row, policy) {
 
   if (policy.matchPrefix) {
     const prefix = normalize(policy.matchPrefix);
-    return dbName.startsWith(prefix) || dbCode.startsWith(prefix);
+    return (
+      (dbName && dbName.startsWith(prefix)) ||
+      (dbCode && dbCode.startsWith(prefix))
+    );
   }
 
-  const matchers = (policy.matchers || []).map(normalize).filter(Boolean);
-  return matchers.some((matcher) => {
-    return (
-      matcher === dbName ||
-      matcher === dbCode ||
-      dbName.includes(matcher) ||
-      matcher.includes(dbName) ||
-      (dbCode && (dbCode.includes(matcher) || matcher.includes(dbCode)))
-    );
-  });
+  // Exact match only — fuzzy includes() caused false positives (e.g. DC-SOR → OR-).
+  const matchers = new Set((policy.matchers || []).map(normalize).filter(Boolean));
+  return matchers.has(dbName) || matchers.has(dbCode);
 }
 
 function findMatches(allRows, policy, alreadyAssigned) {
