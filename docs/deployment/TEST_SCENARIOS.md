@@ -98,8 +98,8 @@ Ask your admin if you do not have access:
 
 | # | Scenario | Steps | Expected result |
 |---|----------|--------|-----------------|
-| 5.1 | Camera capture | 1. Tap **Add receipt**.<br>2. Choose **Camera**.<br>3. Take a photo.<br>4. Crop if needed, then save. | Crop → save works |
-| 5.2 | Gallery | 1. Tap **Add receipt**.<br>2. Choose **Photo library**.<br>3. Pick a picture.<br>4. Crop if needed, then save. | Same flow works |
+| 5.1 | Camera capture | 1. Tap **Add receipt**.<br>2. Choose **Camera**.<br>3. Take a photo.<br>4. On the crop screen, drag the box if you want to trim the image (or tap **Use full image**).<br>5. Tap **Done**, then save the receipt. | Receipt saves with the photo |
+| 5.2 | Gallery | 1. Tap **Add receipt**.<br>2. Choose **Photo library**.<br>3. Pick a picture.<br>4. On the crop screen, adjust the box or tap **Use full image**.<br>5. Tap **Done**, then save the receipt. | Same flow works |
 | 5.3 | Receipt image read | 1. Take a clear photo of a real receipt.<br>2. Wait for the app to read it.<br>3. Check vendor, amount, and date before saving. | App fills in vendor, amount, and date from the photo; you can change them before saving |
 | 5.4 | Low quality | 1. Add a receipt using a blurry or very tiny photo. | Quality warning if score is low |
 | 5.5 | View list | 1. Open **Receipts** for the month you saved to.<br>2. Scroll through the list. | All receipts listed correctly |

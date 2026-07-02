@@ -726,7 +726,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         console.log('📸 Image captured:', uri);
-        applyCroppedImage(uri);
+        navigation.navigate('ReceiptCrop', { imageUri: uri, returnTo: 'AddReceipt' });
       } else {
         console.log('📸 Camera was canceled or no image captured');
       }
@@ -750,7 +750,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         console.log('📷 Image selected:', uri);
-        applyCroppedImage(uri);
+        navigation.navigate('ReceiptCrop', { imageUri: uri, returnTo: 'AddReceipt' });
       } else {
         console.log('📷 Gallery selection was canceled or no image selected');
       }

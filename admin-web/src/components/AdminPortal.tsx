@@ -144,7 +144,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ adminId, adminName }) 
 
   return (
     <Box sx={{ flexGrow: 1 }}>
-      <Container maxWidth="xl" sx={{ mt: 3 }}>
+      <Container maxWidth={false} sx={{ mt: 3, px: { xs: 2, sm: 3, md: 4 } }}>
         {/* Header */}
         <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>

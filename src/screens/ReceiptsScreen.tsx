@@ -404,7 +404,11 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
             quality: 0.8,
           });
           if (!result.canceled && result.assets[0]) {
-            await updateReceiptImage(receipt, result.assets[0].uri);
+            navigation.navigate('ReceiptCrop', {
+              imageUri: result.assets[0].uri,
+              returnTo: 'Receipts',
+              receiptIdToUpdate: receipt.id,
+            });
           }
           return;
         }
@@ -415,7 +419,11 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
           quality: 0.8,
         });
         if (!result.canceled && result.assets[0]) {
-          await updateReceiptImage(receipt, result.assets[0].uri);
+          navigation.navigate('ReceiptCrop', {
+            imageUri: result.assets[0].uri,
+            returnTo: 'Receipts',
+            receiptIdToUpdate: receipt.id,
+          });
         }
       };
 

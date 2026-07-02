@@ -107,6 +107,22 @@ const PORTAL_PERMISSIONS = [
   },
 ];
 
+const employeeTableActionsHeaderSx = {
+  position: 'sticky',
+  right: 0,
+  zIndex: 3,
+  bgcolor: 'background.paper',
+  width: 196,
+  minWidth: 196,
+  maxWidth: 196,
+  boxShadow: '-4px 0 8px -4px rgba(0,0,0,0.12)',
+} as const;
+
+const employeeTableActionsCellSx = {
+  ...employeeTableActionsHeaderSx,
+  zIndex: 1,
+} as const;
+
 const getDefaultPermissions = (role: string, position: string): Array<'admin' | 'finance' | 'contracts' | 'supervisor' | 'senior_staff' | 'staff'> => {
   const normalizedRole = (role || '').toLowerCase();
   const normalizedPosition = (position || '').toLowerCase();
@@ -1084,7 +1100,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
   };
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ px: { xs: 1, md: 2 }, py: 3 }}>
       <Typography variant="h4" gutterBottom>
         Employee Management
       </Typography>
@@ -1207,7 +1223,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
               <Table size="medium" sx={{ tableLayout: 'fixed', width: '100%' }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell padding="checkbox" sx={{ width: '56px', minWidth: '56px', paddingLeft: '10px', paddingRight: '10px' }}>
+                    <TableCell padding="checkbox" sx={{ width: 48, minWidth: 48, paddingLeft: '10px', paddingRight: '10px' }}>
                       <Checkbox
                         indeterminate={visibleSelectedCount > 0 && visibleSelectedCount < filteredEmployees.length}
                         checked={visibleSelectedCount === filteredEmployees.length && filteredEmployees.length > 0}
@@ -1216,7 +1232,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       />
                     </TableCell>
                     {/* Name Column Header */}
-                    <TableCell sx={{ width: '14%', minWidth: 140 }}>
+                    <TableCell sx={{ width: '11%' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Box 
                           sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
@@ -1240,7 +1256,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       </Box>
                     </TableCell>
                     {/* Email Column Header */}
-                    <TableCell sx={{ width: '18%', minWidth: 180 }}>
+                    <TableCell sx={{ width: '15%' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Box 
                           sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
@@ -1264,7 +1280,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       </Box>
                     </TableCell>
                     {/* Position Column Header */}
-                    <TableCell sx={{ width: '14%', minWidth: 140 }}>
+                    <TableCell sx={{ width: '11%' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Box 
                           sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
@@ -1288,7 +1304,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       </Box>
                     </TableCell>
                     {/* Login Role Column Header */}
-                    <TableCell sx={{ width: '10%', minWidth: 90 }}>
+                    <TableCell sx={{ width: '8%' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Box 
                           sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
@@ -1312,7 +1328,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       </Box>
                     </TableCell>
                     {/* Last Login Column Header */}
-                    <TableCell sx={{ width: '12%', minWidth: 120 }}>
+                    <TableCell sx={{ width: '10%' }}>
                       <Box 
                         sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none' }}
                         onClick={() => handleSort('lastLogin')}
@@ -1324,7 +1340,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       </Box>
                     </TableCell>
                     {/* Phone Column Header */}
-                    <TableCell sx={{ width: '10%', minWidth: 100 }}>
+                    <TableCell sx={{ width: '9%' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Box 
                           sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
@@ -1348,7 +1364,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                       </Box>
                     </TableCell>
                     {/* Supervisor Column Header */}
-                    <TableCell sx={{ width: '12%', minWidth: 120 }}>
+                    <TableCell sx={{ width: '10%' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Box 
                           sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', userSelect: 'none', flex: 1 }}
@@ -1371,21 +1387,21 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                         </IconButton>
                       </Box>
                     </TableCell>
-                    <TableCell sx={{ width: '10%', minWidth: 100 }}>Cost Centers</TableCell>
-                    <TableCell sx={{ width: '8%', minWidth: 80 }}>Actions</TableCell>
+                    <TableCell sx={{ width: '12%' }}>Cost Centers</TableCell>
+                    <TableCell sx={employeeTableActionsHeaderSx}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredEmployees.map((employee) => (
                     <TableRow key={employee.id}>
-                      <TableCell padding="checkbox" sx={{ width: '56px', minWidth: '56px', paddingLeft: '10px', paddingRight: '10px' }}>
+                      <TableCell padding="checkbox" sx={{ width: 48, minWidth: 48, paddingLeft: '10px', paddingRight: '10px' }}>
                         <Checkbox
                           checked={selectedEmployees.includes(employee.id)}
                           onChange={() => handleSelectEmployee(employee.id)}
                           size="small"
                         />
                       </TableCell>
-                      <TableCell sx={{ width: '14%', minWidth: 140, fontSize: '0.875rem', padding: '10px' }}>
+                      <TableCell sx={{ fontSize: '0.875rem', padding: '10px' }}>
                         <Box
                           onClick={() => handleViewEmployee(employee)}
                           sx={{
@@ -1403,7 +1419,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                           {employee.name}
                         </Box>
                       </TableCell>
-                      <TableCell sx={{ width: '18%', minWidth: 180, fontSize: '0.875rem', padding: '10px' }}>
+                      <TableCell sx={{ fontSize: '0.875rem', padding: '10px' }}>
                         <Typography
                           variant="body2"
                           sx={{
@@ -1415,7 +1431,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                           {employee.email}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ width: '14%', minWidth: 140, fontSize: '0.875rem', padding: '10px' }}>
+                      <TableCell sx={{ fontSize: '0.875rem', padding: '10px' }}>
                         <Typography
                           variant="body2"
                           sx={{
@@ -1427,7 +1443,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                           {getDisplayPosition(employee.position)}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ width: '10%', minWidth: 90, padding: '10px' }}>
+                      <TableCell sx={{ padding: '10px' }}>
                         <Chip
                           label={employee.role || 'employee'}
                           size="small"
@@ -1451,7 +1467,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                           }}
                         />
                       </TableCell>
-                      <TableCell sx={{ width: '12%', minWidth: 120, fontSize: '0.875rem', padding: '10px' }}>
+                      <TableCell sx={{ fontSize: '0.875rem', padding: '10px' }}>
                         {employee.lastLoginAt 
                           ? new Date(employee.lastLoginAt).toLocaleString('en-US', {
                               month: '2-digit',
@@ -1466,7 +1482,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                             </Typography>
                         }
                       </TableCell>
-                      <TableCell sx={{ width: '10%', minWidth: 100, fontSize: '0.875rem', padding: '10px' }}>
+                      <TableCell sx={{ fontSize: '0.875rem', padding: '10px' }}>
                         <Typography
                           variant="body2"
                           sx={{
@@ -1478,7 +1494,7 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                           {formatPhoneNumber(employee.phoneNumber)}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ width: '12%', minWidth: 120, fontSize: '0.875rem', padding: '10px' }}>
+                      <TableCell sx={{ fontSize: '0.875rem', padding: '10px' }}>
                         <Typography
                           variant="body2"
                           sx={{
@@ -1492,8 +1508,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                             'No Supervisor'}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ width: '10%', minWidth: 100, fontSize: '0.875rem', padding: '10px' }}>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.25, maxWidth: 200 }}>
+                      <TableCell sx={{ fontSize: '0.875rem', padding: '10px' }}>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.25, maxWidth: '100%' }}>
                           {parseCostCenters(employee.costCenters).slice(0, 2).map(center => (
                             <Chip 
                               key={center} 
@@ -1536,8 +1552,8 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell sx={{ width: '8%', minWidth: 80, padding: '10px' }}>
-                        <Box sx={{ display: 'flex', gap: 0.25 }}>
+                      <TableCell sx={{ ...employeeTableActionsCellSx, padding: '10px' }}>
+                        <Box sx={{ display: 'flex', gap: 0.25, flexWrap: 'nowrap' }}>
                           {showArchived ? (
                             <>
                               <Tooltip title="Restore">
