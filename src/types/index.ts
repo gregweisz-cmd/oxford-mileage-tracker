@@ -267,9 +267,8 @@ export type RootStackParamList = {
   Home: undefined;
   MileageEntry: { entryId?: string };
   GpsTracking: { showEndModal?: boolean; endTripOverlay?: boolean };
-  Receipts: { croppedImageUri?: string; receiptIdToUpdate?: string } | undefined;
-  AddReceipt: { croppedImageUri?: string } | undefined;
-  ReceiptCrop: { imageUri: string; returnTo: 'AddReceipt' | 'Receipts'; receiptIdToUpdate?: string };
+  Receipts: { selectedMonth?: number; selectedYear?: number; filterCategory?: string } | undefined;
+  AddReceipt: { receipt?: Receipt } | undefined;
   DailyHours: undefined;
   Admin: undefined;
   ManagerDashboard: undefined;

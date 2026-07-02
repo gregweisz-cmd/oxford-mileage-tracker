@@ -58,8 +58,6 @@ interface ReceiptsScreenProps {
       selectedMonth?: number;
       selectedYear?: number;
       filterCategory?: string;
-      croppedImageUri?: string;
-      receiptIdToUpdate?: string;
     };
   };
 }
@@ -114,18 +112,6 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   useEffect(() => {
     loadData();
   }, [selectedMonth, selectedYear]);
-
-  // When returning from ReceiptCrop with cropped image, update the receipt
-  useEffect(() => {
-    const croppedUri = route?.params?.croppedImageUri;
-    const receiptId = route?.params?.receiptIdToUpdate;
-    if (!croppedUri || !receiptId) return;
-    const receipt = receipts.find(r => r.id === receiptId) ?? allReceipts.find(r => r.id === receiptId);
-    if (receipt) {
-      updateReceiptImage(receipt, croppedUri);
-    }
-    navigation.setParams({ croppedImageUri: undefined, receiptIdToUpdate: undefined });
-  }, [route?.params?.croppedImageUri, route?.params?.receiptIdToUpdate]);
 
   // Filter receipts based on search query and all filters
   useEffect(() => {
@@ -404,11 +390,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
             quality: 0.8,
           });
           if (!result.canceled && result.assets[0]) {
-            navigation.navigate('ReceiptCrop', {
-              imageUri: result.assets[0].uri,
-              returnTo: 'Receipts',
-              receiptIdToUpdate: receipt.id,
-            });
+            await updateReceiptImage(receipt, result.assets[0].uri);
           }
           return;
         }
@@ -419,11 +401,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
           quality: 0.8,
         });
         if (!result.canceled && result.assets[0]) {
-          navigation.navigate('ReceiptCrop', {
-            imageUri: result.assets[0].uri,
-            returnTo: 'Receipts',
-            receiptIdToUpdate: receipt.id,
-          });
+          await updateReceiptImage(receipt, result.assets[0].uri);
         }
       };
 

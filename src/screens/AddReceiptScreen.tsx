@@ -232,16 +232,13 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     }, [])
   );
 
-  // When returning from ReceiptCrop with cropped image, set it and run quality/OCR.
-  // useFocusEffect ensures we apply the crop when the screen gains focus (e.g. after navigate back),
-  // in case the params effect doesn't fire due to navigator behavior.
-  const applyCroppedImage = React.useCallback(
-    (croppedUri: string) => {
+  // Apply a camera/gallery image and run quality check + OCR for new receipts.
+  const applySelectedImage = React.useCallback(
+    (imageUri: string) => {
       const editingReceipt = (route.params as { receipt?: Receipt } | undefined)?.receipt;
-      setImageUri(croppedUri);
+      setImageUri(imageUri);
       setFileType('image');
       setDismissedQualityWarning(false);
-      navigation.setParams({ croppedImageUri: undefined });
 
       if (editingReceipt?.id) {
         return;
@@ -250,22 +247,15 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       setReadingImageToFillData(true);
       (async () => {
         try {
-          const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(croppedUri);
+          const qualityResult = await ReceiptPhotoQualityService.analyzePhotoQuality(imageUri);
           setPhotoQualityResult(qualityResult);
-          await processOcrOnImage(croppedUri);
+          await processOcrOnImage(imageUri);
         } finally {
           setReadingImageToFillData(false);
         }
       })();
     },
-    [navigation, route.params]
-  );
-
-  useFocusEffect(
-    React.useCallback(() => {
-      const croppedUri = route.params?.croppedImageUri;
-      if (croppedUri) applyCroppedImage(croppedUri);
-    }, [route.params?.croppedImageUri, applyCroppedImage])
+    [route.params]
   );
 
   /** Close overlays that can block scroll/touches after lock screen or incomplete flows (same class of bug as GPS). */
@@ -717,7 +707,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       console.log('📸 Launching camera...');
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false, // We use ReceiptCropScreen for freeform crop
+        allowsEditing: false,
         quality: 0.8,
       });
 
@@ -726,7 +716,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         console.log('📸 Image captured:', uri);
-        navigation.navigate('ReceiptCrop', { imageUri: uri, returnTo: 'AddReceipt' });
+        applySelectedImage(uri);
       } else {
         console.log('📸 Camera was canceled or no image captured');
       }
@@ -741,7 +731,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       console.log('📷 Selecting from gallery...');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false, // We use ReceiptCropScreen for freeform crop
+        allowsEditing: false,
         quality: 0.8,
       });
 
@@ -750,7 +740,7 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         console.log('📷 Image selected:', uri);
-        navigation.navigate('ReceiptCrop', { imageUri: uri, returnTo: 'AddReceipt' });
+        applySelectedImage(uri);
       } else {
         console.log('📷 Gallery selection was canceled or no image selected');
       }

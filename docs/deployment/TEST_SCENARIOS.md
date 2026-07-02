@@ -98,8 +98,8 @@ Ask your admin if you do not have access:
 
 | # | Scenario | Steps | Expected result |
 |---|----------|--------|-----------------|
-| 5.1 | Camera capture | 1. Tap **Add receipt**.<br>2. Choose **Camera**.<br>3. Take a photo.<br>4. On the crop screen, drag the box if you want to trim the image (or tap **Use full image**).<br>5. Tap **Done**, then save the receipt. | Receipt saves with the photo |
-| 5.2 | Gallery | 1. Tap **Add receipt**.<br>2. Choose **Photo library**.<br>3. Pick a picture.<br>4. On the crop screen, adjust the box or tap **Use full image**.<br>5. Tap **Done**, then save the receipt. | Same flow works |
+| 5.1 | Camera capture | 1. Tap **Add receipt**.<br>2. Choose **Camera**.<br>3. Take a photo.<br>4. Save the receipt. | Receipt saves with the photo |
+| 5.2 | Gallery | 1. Tap **Add receipt**.<br>2. Choose **Photo library**.<br>3. Pick a picture.<br>4. Save the receipt. | Same flow works |
 | 5.3 | Receipt image read | 1. Take a clear photo of a real receipt.<br>2. Wait for the app to read it.<br>3. Check vendor, amount, and date before saving. | App fills in vendor, amount, and date from the photo; you can change them before saving |
 | 5.4 | Low quality | 1. Add a receipt using a blurry or very tiny photo. | Quality warning if score is low |
 | 5.5 | View list | 1. Open **Receipts** for the month you saved to.<br>2. Scroll through the list. | All receipts listed correctly |
@@ -174,7 +174,7 @@ Ask your admin if you do not have access:
 | 10.6 | Day off + mileage | 1. Pick a day that already has mileage.<br>2. Turn **Day off** on, then off again.<br>3. Save each time. | Can check and uncheck |
 | 10.7 | Timesheet categories | 1. In the bottom section of the Timesheet, enter hours in **PTO** or **G&A** (not Working Hours).<br>2. Save and refresh. | Stays in category rows, not Working Hours |
 | 10.8 | Partial PTO | 1. On the web, enter partial PTO for a day.<br>2. Save.<br>3. On your phone, sync and open that same day. | Same calendar day (no timezone shift) |
-| 10.9 | Receipts | 1. Open the **Receipts** tab.<br>2. Upload a receipt image.<br>3. Crop it if needed.<br>4. Open it to view the full image. | Image displays; saves correctly |
+| 10.9 | Receipts | 1. Open the **Receipts** tab.<br>2. Upload a receipt image.<br>3. Open it to view the full image. | Image displays; saves correctly |
 | 10.10 | Per Diem tab | 1. Open **Per Diem** on the web.<br>2. Compare eligible days and amounts to your phone. | Matches mobile; tiered rules apply |
 | 10.11 | Cover sheet | 1. Open the **Cover sheet** tab.<br>2. Add your signature and check the certification box.<br>3. Save. | Tab warning clears when complete |
 | 10.12 | Save report | 1. Make a change anywhere on the report.<br>2. Click **Save** (do **not** submit yet).<br>3. Refresh the browser. | Draft persists after refresh |

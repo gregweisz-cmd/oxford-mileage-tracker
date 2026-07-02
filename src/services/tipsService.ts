@@ -192,17 +192,6 @@ export class TipsService {
         dismissible: true
       },
       {
-        id: 'receipt_cropping',
-        title: 'Crop Your Receipts ✂️',
-        message: 'After taking a photo, you can crop the receipt to focus on the important details. This improves text recognition accuracy.',
-        category: 'receipts',
-        priority: 'low',
-        screen: 'AddReceiptScreen',
-        trigger: 'after_action',
-        icon: 'crop',
-        dismissible: true
-      },
-      {
         id: 'vendor_suggestions',
         title: 'Smart Vendor Suggestions 🤖',
         message: 'The app learns your frequent vendors and suggests them automatically. This speeds up receipt entry!',
