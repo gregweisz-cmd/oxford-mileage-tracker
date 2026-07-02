@@ -881,6 +881,7 @@ export class ApiSyncService {
             gpsStartLng: entry.gpsStartLng,
             gpsEndLat: entry.gpsEndLat,
             gpsEndLng: entry.gpsEndLng,
+            gpsTrackingDiagnostics: entry.gpsTrackingDiagnostics,
           };
           
           // Debug: Log address information to verify it's being sent
@@ -1970,6 +1971,11 @@ export class ApiSyncService {
         gpsStartLng: entry.gpsStartLng != null ? Number(entry.gpsStartLng) : undefined,
         gpsEndLat: entry.gpsEndLat != null ? Number(entry.gpsEndLat) : undefined,
         gpsEndLng: entry.gpsEndLng != null ? Number(entry.gpsEndLng) : undefined,
+        gpsTrackingDiagnostics: entry.gpsTrackingDiagnostics
+          ? typeof entry.gpsTrackingDiagnostics === 'string'
+            ? JSON.parse(entry.gpsTrackingDiagnostics)
+            : entry.gpsTrackingDiagnostics
+          : undefined,
         createdAt: new Date(entry.createdAt),
         updatedAt: new Date(entry.updatedAt)
       }));
@@ -2492,7 +2498,7 @@ export class ApiSyncService {
                 startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?,
                 startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?,
                 endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?,
-                isGpsTracked = ?, gpsTrackStartedAt = ?, gpsTrackEndedAt = ?, gpsStartLat = ?, gpsStartLng = ?, gpsEndLat = ?, gpsEndLng = ?, updatedAt = ?
+                isGpsTracked = ?, gpsTrackStartedAt = ?, gpsTrackEndedAt = ?, gpsStartLat = ?, gpsStartLng = ?, gpsEndLat = ?, gpsEndLng = ?, gpsTrackingDiagnostics = ?, updatedAt = ?
               WHERE id = ?`,
               [
                 entry.employeeId,
@@ -2526,6 +2532,7 @@ export class ApiSyncService {
                 entry.gpsStartLng ?? null,
                 entry.gpsEndLat ?? null,
                 entry.gpsEndLng ?? null,
+                entry.gpsTrackingDiagnostics ? JSON.stringify(entry.gpsTrackingDiagnostics) : null,
                 entryUpdatedAt,
                 entry.id
               ]
@@ -2539,8 +2546,8 @@ export class ApiSyncService {
                 startLocation, endLocation, startLocationName, startLocationAddress,
                 startLocationLat, startLocationLng, endLocationName, endLocationAddress,
                 endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked,
-                isGpsTracked, gpsTrackStartedAt, gpsTrackEndedAt, gpsStartLat, gpsStartLng, gpsEndLat, gpsEndLng, createdAt, updatedAt
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                isGpsTracked, gpsTrackStartedAt, gpsTrackEndedAt, gpsStartLat, gpsStartLng, gpsEndLat, gpsEndLng, gpsTrackingDiagnostics, createdAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 entry.id, // Preserve backend ID
                 entry.employeeId,
@@ -2574,6 +2581,7 @@ export class ApiSyncService {
                 entry.gpsStartLng ?? null,
                 entry.gpsEndLat ?? null,
                 entry.gpsEndLng ?? null,
+                entry.gpsTrackingDiagnostics ? JSON.stringify(entry.gpsTrackingDiagnostics) : null,
                 entry.createdAt instanceof Date ? entry.createdAt.toISOString() : (entry.createdAt || new Date().toISOString()),
                 entryUpdatedAt
               ]

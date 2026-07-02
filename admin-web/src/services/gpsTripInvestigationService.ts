@@ -30,6 +30,21 @@ export interface GpsTripInvestigationRow {
   flagLateStart?: boolean;
   flagLateEnd?: boolean;
   hasGpsAudit?: boolean;
+  gpsTrackingDiagnostics?: GpsTrackingDiagnostics | null;
+}
+
+export interface GpsTrackingDiagnostics {
+  locationPointsReceived: number;
+  locationPointsCounted: number;
+  duplicatePointsSkipped: number;
+  implausibleSegmentsDropped: number;
+  implausibleMilesDropped: number;
+  maxGapSeconds: number;
+  pausedMinutes: number;
+  avgAccuracyMeters: number | null;
+  rawDistanceMiles: number;
+  roundedMiles: number;
+  trackingDurationMinutes: number | null;
 }
 
 export interface GpsTripInvestigationResponse {

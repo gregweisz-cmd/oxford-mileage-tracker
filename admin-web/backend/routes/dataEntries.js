@@ -24,6 +24,28 @@ const { sanitizeLocationName } = require('../utils/locationName');
 const { formatLocationNameAndAddress } = require('../utils/locationDisplay');
 const { enrichAddressIfNeeded } = require('../utils/addressEnrichment');
 const { resolveSuggestedStartingOdometer } = require('../utils/odometerSuggestion');
+
+function normalizeGpsTrackingDiagnostics(value) {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function parseGpsTrackingDiagnostics(raw) {
+  if (!raw) return null;
+  try {
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch {
+    return null;
+  }
+}
 const {
   resolveReceiptFilePath,
   contentTypeForPath,
@@ -233,6 +255,7 @@ router.post('/api/mileage-entries', (req, res) => {
     gpsStartLng,
     gpsEndLat,
     gpsEndLng,
+    gpsTrackingDiagnostics,
   } = req.body;
   // Use provided ID or generate a new one
   // IMPORTANT: Always use the provided ID if available to prevent duplicates
@@ -297,7 +320,7 @@ router.post('/api/mileage-entries', (req, res) => {
 
     const runInsert = (sortOrderVal) => {
       db.run(
-        'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, vehicleId, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, sortOrder, gpsTrackStartedAt, gpsTrackEndedAt, gpsStartLat, gpsStartLng, gpsEndLat, gpsEndLng, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
+        'INSERT OR REPLACE INTO mileage_entries (id, employeeId, oxfordHouseId, date, vehicleId, odometerReading, startLocation, endLocation, startLocationName, startLocationAddress, startLocationLat, startLocationLng, endLocationName, endLocationAddress, endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, isGpsTracked, costCenter, sortOrder, gpsTrackStartedAt, gpsTrackEndedAt, gpsStartLat, gpsStartLng, gpsEndLat, gpsEndLng, gpsTrackingDiagnostics, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT createdAt FROM mileage_entries WHERE id = ?), ?), ?)',
         [
           entryId,
           employeeId,
@@ -328,6 +351,7 @@ router.post('/api/mileage-entries', (req, res) => {
           gpsStartLng || 0,
           gpsEndLat || 0,
           gpsEndLng || 0,
+          normalizeGpsTrackingDiagnostics(gpsTrackingDiagnostics),
           entryId,
           now,
           now
@@ -403,6 +427,7 @@ router.put('/api/mileage-entries/:id', guardResourceEmployeeAccess('mileage_entr
     gpsStartLng,
     gpsEndLat,
     gpsEndLng,
+    gpsTrackingDiagnostics,
   } = req.body;
   const now = new Date().toISOString();
   const db = dbService.getDb();
@@ -454,7 +479,7 @@ router.put('/api/mileage-entries/:id', guardResourceEmployeeAccess('mileage_entr
     }
 
   db.run(
-    'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, vehicleId = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, gpsTrackStartedAt = COALESCE(?, gpsTrackStartedAt), gpsTrackEndedAt = COALESCE(?, gpsTrackEndedAt), gpsStartLat = COALESCE(?, gpsStartLat), gpsStartLng = COALESCE(?, gpsStartLng), gpsEndLat = COALESCE(?, gpsEndLat), gpsEndLng = COALESCE(?, gpsEndLng), updatedAt = ? WHERE id = ?',
+    'UPDATE mileage_entries SET employeeId = ?, oxfordHouseId = ?, date = ?, vehicleId = ?, odometerReading = ?, startLocation = ?, endLocation = ?, startLocationName = ?, startLocationAddress = ?, startLocationLat = ?, startLocationLng = ?, endLocationName = ?, endLocationAddress = ?, endLocationLat = ?, endLocationLng = ?, purpose = ?, miles = ?, notes = ?, hoursWorked = ?, isGpsTracked = ?, costCenter = ?, gpsTrackStartedAt = COALESCE(?, gpsTrackStartedAt), gpsTrackEndedAt = COALESCE(?, gpsTrackEndedAt), gpsStartLat = COALESCE(?, gpsStartLat), gpsStartLng = COALESCE(?, gpsStartLng), gpsEndLat = COALESCE(?, gpsEndLat), gpsEndLng = COALESCE(?, gpsEndLng), gpsTrackingDiagnostics = COALESCE(?, gpsTrackingDiagnostics), updatedAt = ? WHERE id = ?',
     [
       employeeId,
       oxfordHouseId || '',
@@ -483,6 +508,7 @@ router.put('/api/mileage-entries/:id', guardResourceEmployeeAccess('mileage_entr
       gpsStartLng ?? null,
       gpsEndLat ?? null,
       gpsEndLng ?? null,
+      normalizeGpsTrackingDiagnostics(gpsTrackingDiagnostics),
       now,
       id
     ],

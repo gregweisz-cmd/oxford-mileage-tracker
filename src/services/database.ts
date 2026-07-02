@@ -1150,8 +1150,19 @@ export class DatabaseService {
   // Mileage entry operations
   private static gpsAuditFromRow(row: any): Pick<
     MileageEntry,
-    'gpsTrackStartedAt' | 'gpsTrackEndedAt' | 'gpsStartLat' | 'gpsStartLng' | 'gpsEndLat' | 'gpsEndLng'
+    'gpsTrackStartedAt' | 'gpsTrackEndedAt' | 'gpsStartLat' | 'gpsStartLng' | 'gpsEndLat' | 'gpsEndLng' | 'gpsTrackingDiagnostics'
   > {
+    let gpsTrackingDiagnostics: MileageEntry['gpsTrackingDiagnostics'];
+    if (row.gpsTrackingDiagnostics) {
+      try {
+        gpsTrackingDiagnostics =
+          typeof row.gpsTrackingDiagnostics === 'string'
+            ? JSON.parse(row.gpsTrackingDiagnostics)
+            : row.gpsTrackingDiagnostics;
+      } catch {
+        gpsTrackingDiagnostics = undefined;
+      }
+    }
     return {
       gpsTrackStartedAt: row.gpsTrackStartedAt ? new Date(row.gpsTrackStartedAt) : undefined,
       gpsTrackEndedAt: row.gpsTrackEndedAt ? new Date(row.gpsTrackEndedAt) : undefined,
@@ -1159,6 +1170,7 @@ export class DatabaseService {
       gpsStartLng: row.gpsStartLng != null ? Number(row.gpsStartLng) : undefined,
       gpsEndLat: row.gpsEndLat != null ? Number(row.gpsEndLat) : undefined,
       gpsEndLng: row.gpsEndLng != null ? Number(row.gpsEndLng) : undefined,
+      gpsTrackingDiagnostics,
     };
   }
 
@@ -1185,6 +1197,9 @@ export class DatabaseService {
         : entry.gpsTrackEndedAt
           ? String(entry.gpsTrackEndedAt)
           : null;
+    const gpsTrackingDiagnostics = entry.gpsTrackingDiagnostics
+      ? JSON.stringify(entry.gpsTrackingDiagnostics)
+      : null;
 
     // Insert with location details
     await database.runAsync(
@@ -1194,8 +1209,8 @@ export class DatabaseService {
         startLocationLat, startLocationLng, endLocationName, endLocationAddress, 
         endLocationLat, endLocationLng, purpose, miles, notes, hoursWorked, 
         isGpsTracked, gpsTrackStartedAt, gpsTrackEndedAt, gpsStartLat, gpsStartLng, gpsEndLat, gpsEndLng,
-        createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        gpsTrackingDiagnostics, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id, 
         entry.employeeId, 
@@ -1235,6 +1250,7 @@ export class DatabaseService {
         entry.gpsStartLng ?? null,
         entry.gpsEndLat ?? null,
         entry.gpsEndLng ?? null,
+        gpsTrackingDiagnostics,
         now, 
         now
       ]
@@ -3431,6 +3447,7 @@ export class DatabaseService {
       { column: 'gpsStartLng', type: 'REAL' },
       { column: 'gpsEndLat', type: 'REAL' },
       { column: 'gpsEndLng', type: 'REAL' },
+      { column: 'gpsTrackingDiagnostics', type: 'TEXT' },
     ];
 
     for (const migration of mileageMigrations) {

@@ -126,6 +126,7 @@ export interface MileageEntry {
   gpsStartLng?: number;
   gpsEndLat?: number;
   gpsEndLng?: number;
+  gpsTrackingDiagnostics?: import('../utils/gpsTrackingDiagnostics').GpsTrackingDiagnostics;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -176,6 +177,7 @@ export interface GpsTrackingSession {
   gpsDeviceStartLng?: number;
   gpsDeviceEndLat?: number;
   gpsDeviceEndLng?: number;
+  gpsTrackingDiagnostics?: import('../utils/gpsTrackingDiagnostics').GpsTrackingDiagnostics;
 }
 
 export interface Receipt {

@@ -14,6 +14,18 @@ const dateHelpers = require('../utils/dateHelpers');
 const { normalizeCostCenter } = require('../utils/costCenterNormalizer');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { haversineMiles, hasValidCoords } = require('../utils/geoDistance');
+
+function parseGpsTrackingDiagnostics(raw) {
+  if (!raw) return null;
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (typeof parsed.locationPointsReceived !== 'number') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 const distanceService = require('../services/distanceService');
 const { requireAuth, requireAnyRole, getEffectiveRole } = require('../middleware/auth');
 
@@ -3601,6 +3613,7 @@ router.get('/api/admin/reporting/gps-trips', async (req, res) => {
           me.gpsStartLng,
           me.gpsEndLat,
           me.gpsEndLng,
+          me.gpsTrackingDiagnostics,
           me.createdAt,
           me.updatedAt,
           COALESCE(NULLIF(e.preferredName, ''), e.name) AS employeeName,
@@ -3646,6 +3659,7 @@ router.get('/api/admin/reporting/gps-trips', async (req, res) => {
       return {
         ...row,
         trackedMiles: row.miles,
+        gpsTrackingDiagnostics: parseGpsTrackingDiagnostics(row.gpsTrackingDiagnostics),
         startGapMiles: startGapMiles != null ? Number(startGapMiles.toFixed(2)) : null,
         endGapMiles: endGapMiles != null ? Number(endGapMiles.toFixed(2)) : null,
         tripDurationMinutes,

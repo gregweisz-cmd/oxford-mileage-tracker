@@ -14,6 +14,11 @@ import { GooglePlacesService } from './googlePlacesService';
 import { buildPartsFromGeocode } from '../utils/addressFormatter';
 import { promptForNotificationAccessIfNeeded } from './localNotificationSetup';
 import { StationaryNotificationService } from './stationaryNotificationService';
+import {
+  buildGpsTrackingDiagnostics,
+  recordGpsPauseEnd,
+  recordGpsPauseStart,
+} from '../utils/gpsTrackingDiagnostics';
 
 /** Reject corrupt / partial AsyncStorage blobs so restore cannot throw mid-hydration. */
 function isPersistedStateRestorable(state: unknown): state is PersistedGpsState {
@@ -226,6 +231,7 @@ export class GpsTrackingService {
         stationaryAlertScheduledId: null,
         isPaused: false,
         pausedDrivingAlertPending: false,
+        diagnostics: undefined,
       };
       await AsyncStorage.setItem(GPS_TRACKING_STORAGE_KEY, JSON.stringify(persistedState));
 
@@ -283,19 +289,24 @@ export class GpsTrackingService {
       await this.syncFromStorage();
 
       let finalDistance = this.totalDistance;
+      let gpsTrackingDiagnostics;
       try {
         const raw = await AsyncStorage.getItem(GPS_TRACKING_STORAGE_KEY);
         if (raw) {
           const parsed: unknown = JSON.parse(raw);
           if (
             isPersistedStateRestorable(parsed) &&
-            parsed.session.id === sessionId &&
-            typeof parsed.totalDistance === 'number' &&
-            Number.isFinite(parsed.totalDistance)
+            parsed.session.id === sessionId
           ) {
-            finalDistance = parsed.totalDistance;
-            this.totalDistance = parsed.totalDistance;
-            this.currentSession.totalMiles = parsed.session.totalMiles;
+            if (
+              typeof parsed.totalDistance === 'number' &&
+              Number.isFinite(parsed.totalDistance)
+            ) {
+              finalDistance = parsed.totalDistance;
+              this.totalDistance = parsed.totalDistance;
+              this.currentSession.totalMiles = parsed.session.totalMiles;
+            }
+            gpsTrackingDiagnostics = buildGpsTrackingDiagnostics(parsed, Date.now());
           }
         }
       } catch {
@@ -307,6 +318,9 @@ export class GpsTrackingService {
       this.currentSession.endTime = new Date();
       this.currentSession.totalMiles = Math.round(finalDistance);
       this.currentSession.isActive = false;
+      if (gpsTrackingDiagnostics) {
+        this.currentSession.gpsTrackingDiagnostics = gpsTrackingDiagnostics;
+      }
 
       if (this.lastLocation?.coords) {
         this.currentSession.gpsDeviceEndLat = this.lastLocation.coords.latitude;
@@ -574,6 +588,7 @@ export class GpsTrackingService {
       state.nonDrivingCandidateStartTime = null;
       state.isPaused = true;
       state.pausedDrivingAlertPending = false;
+      recordGpsPauseStart(state);
 
       try {
         const loc = await Location.getCurrentPositionAsync({
@@ -617,6 +632,7 @@ export class GpsTrackingService {
 
       state.isPaused = false;
       state.pausedDrivingAlertPending = false;
+      recordGpsPauseEnd(state);
       await StationaryNotificationService.cancelAllStationaryAlerts();
       state.stationaryAlertScheduledId = null;
       state.stationaryStartTime = null;

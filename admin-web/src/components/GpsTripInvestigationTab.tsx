@@ -6,6 +6,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Divider,
   Dialog,
   DialogActions,
   DialogContent,
@@ -32,6 +33,7 @@ import {
   googleMapsCoordUrl,
   GpsTripInvestigationRow,
   GpsTripRouteOption,
+  GpsTrackingDiagnostics,
 } from '../services/gpsTripInvestigationService';
 import { debugError } from '../config/debug';
 
@@ -75,6 +77,60 @@ const CoordLink: React.FC<{ lat?: number; lng?: number; label?: string }> = ({ l
       {text}
     </Link>
   );
+};
+
+const formatDurationSeconds = (seconds: number) => {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (minutes < 60) return remainder > 0 ? `${minutes}m ${remainder}s` : `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+};
+
+const getDiagnosticInsights = (
+  diagnostics: GpsTrackingDiagnostics,
+  trackedMiles?: number
+): string[] => {
+  const insights: string[] = [];
+  if (diagnostics.implausibleMilesDropped >= 1) {
+    insights.push(
+      `${diagnostics.implausibleSegmentsDropped} GPS segment(s) were dropped as implausible (~${diagnostics.implausibleMilesDropped} mi not counted).`
+    );
+  }
+  if (diagnostics.maxGapSeconds >= 120) {
+    insights.push(
+      `Longest gap between GPS updates was ${formatDurationSeconds(diagnostics.maxGapSeconds)} — driving during gaps may be under-counted.`
+    );
+  }
+  if (diagnostics.pausedMinutes > 0) {
+    insights.push(
+      `Mileage was paused for ${diagnostics.pausedMinutes} min during this trip (miles not counted while paused).`
+    );
+  }
+  if (
+    diagnostics.trackingDurationMinutes != null &&
+    diagnostics.trackingDurationMinutes >= 10 &&
+    diagnostics.locationPointsReceived / diagnostics.trackingDurationMinutes < 2
+  ) {
+    insights.push(
+      `Sparse GPS sampling (${diagnostics.locationPointsReceived} points over ${diagnostics.trackingDurationMinutes} min) — straight-line segments often miss road distance.`
+    );
+  }
+  if (
+    trackedMiles != null &&
+    diagnostics.roundedMiles === trackedMiles &&
+    Math.abs(diagnostics.rawDistanceMiles - trackedMiles) >= 0.5
+  ) {
+    insights.push(
+      `Saved miles (${trackedMiles}) were rounded from raw GPS total (${diagnostics.rawDistanceMiles} mi).`
+    );
+  }
+  if (insights.length === 0) {
+    insights.push('No obvious GPS quality issues flagged — a large gap vs Google routes may still mean the phone took a different path.');
+  }
+  return insights;
 };
 
 const hasPickedTripCoords = (trip: GpsTripInvestigationRow) => {
@@ -202,6 +258,75 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
     );
   };
 
+  const renderDiagnosticsSection = (trip: GpsTripInvestigationRow) => {
+    const diagnostics = trip.gpsTrackingDiagnostics;
+    const trackedMiles = trip.trackedMiles ?? trip.miles;
+
+    if (!diagnostics) {
+      return (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Tracking stats were not saved for this trip (recorded before diagnostics were added). New trips
+          from an updated mobile build will include GPS quality details here.
+        </Alert>
+      );
+    }
+
+    const insights = getDiagnosticInsights(diagnostics, trackedMiles);
+    const hasWarnings =
+      diagnostics.implausibleMilesDropped >= 1 ||
+      diagnostics.maxGapSeconds >= 120 ||
+      (diagnostics.trackingDurationMinutes != null &&
+        diagnostics.trackingDurationMinutes >= 10 &&
+        diagnostics.locationPointsReceived / diagnostics.trackingDurationMinutes < 2);
+
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="subtitle1" gutterBottom>
+          GPS tracking diagnostics
+        </Typography>
+        <Stack spacing={1} sx={{ mb: 2 }}>
+          <Typography variant="body2">
+            Raw GPS distance: <strong>{diagnostics.rawDistanceMiles} mi</strong> → rounded{' '}
+            <strong>{diagnostics.roundedMiles} mi</strong>
+            {trackedMiles != null ? (
+              <>
+                {' '}
+                (saved as <strong>{trackedMiles} mi</strong>)
+              </>
+            ) : null}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            GPS points received: {diagnostics.locationPointsReceived} · counted toward miles:{' '}
+            {diagnostics.locationPointsCounted} · duplicates skipped: {diagnostics.duplicatePointsSkipped}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Longest update gap: {formatDurationSeconds(diagnostics.maxGapSeconds)} · paused:{' '}
+            {diagnostics.pausedMinutes} min
+            {diagnostics.avgAccuracyMeters != null
+              ? ` · avg accuracy ~${diagnostics.avgAccuracyMeters} m`
+              : ''}
+            {diagnostics.trackingDurationMinutes != null
+              ? ` · tracked ${diagnostics.trackingDurationMinutes} min`
+              : ''}
+          </Typography>
+          {diagnostics.implausibleSegmentsDropped > 0 && (
+            <Typography variant="body2" color="warning.main">
+              Implausible segments dropped: {diagnostics.implausibleSegmentsDropped} (~
+              {diagnostics.implausibleMilesDropped} mi excluded)
+            </Typography>
+          )}
+        </Stack>
+        <Alert severity={hasWarnings ? 'warning' : 'info'} sx={{ mb: 1 }}>
+          {insights.map((insight) => (
+            <Typography key={insight} variant="body2" sx={{ mb: insights.length > 1 ? 0.5 : 0 }}>
+              {insight}
+            </Typography>
+          ))}
+        </Alert>
+      </Box>
+    );
+  };
+
   const renderGoogleMapsCell = (trip: GpsTripInvestigationRow) => {
     const routes = googleMapsRoutesByTripId[trip.id];
     const isLoading = !!googleMapsLoadingByTripId[trip.id];
@@ -216,7 +341,7 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
           </Typography>
           <Stack direction="row" spacing={1}>
             <Button size="small" variant="text" onClick={() => setRouteCompareTrip(trip)}>
-              View routes
+              Review trip
             </Button>
             <Button
               size="small"
@@ -363,7 +488,14 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
                       <Typography variant="body2">{formatDateTime(trip.gpsTrackEndedAt)}</Typography>
                       <CoordLink lat={trip.gpsEndLat} lng={trip.gpsEndLng} />
                     </TableCell>
-                    <TableCell>{trip.trackedMiles ?? trip.miles}</TableCell>
+                    <TableCell>
+                      <Stack spacing={0.5}>
+                        <Typography variant="body2">{trip.trackedMiles ?? trip.miles}</Typography>
+                        <Button size="small" variant="text" onClick={() => setRouteCompareTrip(trip)}>
+                          Review trip
+                        </Button>
+                      </Stack>
+                    </TableCell>
                     <TableCell>{renderGoogleMapsCell(trip)}</TableCell>
                     <TableCell>
                       <Typography variant="body2">
@@ -406,7 +538,7 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Google Maps route options</DialogTitle>
+        <DialogTitle>Trip review</DialogTitle>
         <DialogContent>
           {routeCompareTrip && (
             <>
@@ -414,18 +546,40 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
                 {routeCompareTrip.employeeName || routeCompareTrip.employeeId} ·{' '}
                 {routeCompareTrip.date?.slice(0, 10)}
               </Typography>
-              <Typography variant="body2" sx={{ mb: 2 }}>
+              <Typography variant="body2" sx={{ mb: 1 }}>
                 Miles tracked: <strong>{routeCompareTrip.trackedMiles ?? routeCompareTrip.miles ?? '—'}</strong>
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Google found {googleMapsRoutesByTripId[routeCompareTrip.id]?.length || 0} driving route
-                {(googleMapsRoutesByTripId[routeCompareTrip.id]?.length || 0) === 1 ? '' : 's'} between the picked start and end.
-              </Typography>
-              <Stack spacing={1.5}>
-                {(googleMapsRoutesByTripId[routeCompareTrip.id] || []).map((route, index) =>
-                  renderRouteOption(route, index, routeCompareTrip.trackedMiles ?? routeCompareTrip.miles)
-                )}
-              </Stack>
+
+              {renderDiagnosticsSection(routeCompareTrip)}
+
+              {(googleMapsRoutesByTripId[routeCompareTrip.id] || []).length > 0 && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="subtitle1" gutterBottom>
+                    Google Maps route options
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {googleMapsRoutesByTripId[routeCompareTrip.id]?.length || 0} driving route
+                    {(googleMapsRoutesByTripId[routeCompareTrip.id]?.length || 0) === 1 ? '' : 's'}{' '}
+                    between the picked start and end.
+                  </Typography>
+                  <Stack spacing={1.5}>
+                    {(googleMapsRoutesByTripId[routeCompareTrip.id] || []).map((route, index) =>
+                      renderRouteOption(
+                        route,
+                        index,
+                        routeCompareTrip.trackedMiles ?? routeCompareTrip.miles
+                      )
+                    )}
+                  </Stack>
+                </>
+              )}
+
+              {(googleMapsRoutesByTripId[routeCompareTrip.id] || []).length === 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  Use <strong>Calculate</strong> in the Google Maps column to compare driving routes.
+                </Typography>
+              )}
             </>
           )}
         </DialogContent>

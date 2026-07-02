@@ -1146,6 +1146,7 @@ function ensureTablesExist() {
             { name: 'gpsStartLng', type: 'REAL DEFAULT 0' },
             { name: 'gpsEndLat', type: 'REAL DEFAULT 0' },
             { name: 'gpsEndLng', type: 'REAL DEFAULT 0' },
+            { name: 'gpsTrackingDiagnostics', type: 'TEXT' },
           ];
           for (const col of gpsAuditColumns) {
             if (!columnNames.includes(col.name)) {

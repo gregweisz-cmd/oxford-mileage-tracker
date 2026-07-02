@@ -9,6 +9,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { debugLog } from '../config/debug';
 import { LocationDetails } from '../types';
 import { StationaryNotificationService } from './stationaryNotificationService';
+import {
+  ensureGpsDiagnosticsCounters,
+  type GpsTrackingDiagnosticsCounters,
+} from '../utils/gpsTrackingDiagnostics';
+
+export type { GpsTrackingDiagnosticsCounters };
 
 const LOCATION_TASK_NAME = 'background-location-task';
 export { LOCATION_TASK_NAME };
@@ -42,6 +48,7 @@ export interface PersistedGpsState {
   isPaused?: boolean;
   /** True when movement is detected while mileage is paused */
   pausedDrivingAlertPending?: boolean;
+  diagnostics?: GpsTrackingDiagnosticsCounters;
 }
 
 const VEHICLE_SPEED_THRESHOLD_MPH = 8;
@@ -117,7 +124,32 @@ function isImplausibleSegment(distanceMiles: number, elapsedMs: number): boolean
   return distanceMiles / hours > MAX_IMPLAUSIBLE_SPEED_MPH;
 }
 
+function recordLocationAccuracy(
+  diagnostics: GpsTrackingDiagnosticsCounters,
+  accuracy: number | null | undefined
+): void {
+  if (accuracy == null || !Number.isFinite(accuracy) || accuracy <= 0) return;
+  diagnostics.accuracySum += accuracy;
+  diagnostics.accuracyCount += 1;
+}
+
+function recordLocationGap(
+  diagnostics: GpsTrackingDiagnosticsCounters,
+  timestamp: number,
+  previousTimestamp: number | null
+): number | null {
+  if (previousTimestamp == null || !Number.isFinite(previousTimestamp)) {
+    return timestamp;
+  }
+  const gapSeconds = Math.max(0, (timestamp - previousTimestamp) / 1000);
+  if (gapSeconds > diagnostics.maxGapSeconds) {
+    diagnostics.maxGapSeconds = gapSeconds;
+  }
+  return timestamp;
+}
+
 function normalizePersistedDefaults(state: PersistedGpsState, now: number): void {
+  ensureGpsDiagnosticsCounters(state);
   if (typeof state.hasSeenVehicleSpeed !== 'boolean') {
     state.hasSeenVehicleSpeed = false;
   }
@@ -193,6 +225,9 @@ async function processLocationBatch(locations: Location.LocationObject[]): Promi
   const sortedLocations = sortLocationsByTimestamp(locations);
   if (sortedLocations.length === 0) return;
 
+  const diagnostics = ensureGpsDiagnosticsCounters(state);
+  let lastReceivedTimestamp: number | null = state.lastLocationTimestamp ?? null;
+
   const batchStartLat = state.lastLocation.latitude;
   const batchStartLon = state.lastLocation.longitude;
   const batchStartTimestamp = state.lastLocationTimestamp ?? now;
@@ -206,7 +241,11 @@ async function processLocationBatch(locations: Location.LocationObject[]): Promi
       const lat = loc.coords.latitude;
       const lon = loc.coords.longitude;
       const ts = typeof loc.timestamp === 'number' ? loc.timestamp : now;
+      diagnostics.locationPointsReceived += 1;
+      recordLocationAccuracy(diagnostics, loc.coords.accuracy);
+      lastReceivedTimestamp = recordLocationGap(diagnostics, ts, lastReceivedTimestamp);
       if (isAlreadyProcessedLocation(lat, lon, ts, anchorLat, anchorLon, anchorTimestamp)) {
+        diagnostics.duplicatePointsSkipped += 1;
         continue;
       }
       anchorLat = lat;
@@ -249,7 +288,12 @@ async function processLocationBatch(locations: Location.LocationObject[]): Promi
     const lon = loc.coords.longitude;
     const ts = typeof loc.timestamp === 'number' ? loc.timestamp : now;
 
+    diagnostics.locationPointsReceived += 1;
+    recordLocationAccuracy(diagnostics, loc.coords.accuracy);
+    lastReceivedTimestamp = recordLocationGap(diagnostics, ts, lastReceivedTimestamp);
+
     if (isAlreadyProcessedLocation(lat, lon, ts, anchorLat, anchorLon, anchorTimestamp)) {
+      diagnostics.duplicatePointsSkipped += 1;
       continue;
     }
 
@@ -262,12 +306,15 @@ async function processLocationBatch(locations: Location.LocationObject[]): Promi
         segmentMiles.toFixed(2),
         'mi'
       );
+      diagnostics.implausibleSegmentsDropped += 1;
+      diagnostics.implausibleMilesDropped += segmentMiles;
       anchorLat = lat;
       anchorLon = lon;
       anchorTimestamp = ts;
       continue;
     }
 
+    diagnostics.locationPointsCounted += 1;
     state.totalDistance += segmentMiles;
     anchorLat = lat;
     anchorLon = lon;
