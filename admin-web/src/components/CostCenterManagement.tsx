@@ -1226,21 +1226,31 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
                     fullWidth
                     label="Max Per Diem Amount"
                     type="number"
-                    value={perDiemRules.maxAmount || 35}
-                    onChange={(e) => setPerDiemRules({ ...perDiemRules, maxAmount: parseFloat(e.target.value) })}
+                    value={perDiemRules.maxAmount ?? 35}
+                    onChange={(e) =>
+                      setPerDiemRules({
+                        ...perDiemRules,
+                        maxAmount: e.target.value === '' ? 0 : parseFloat(e.target.value),
+                      })
+                    }
                     margin="normal"
                     InputProps={{
                       startAdornment: <InputAdornment position="start">$</InputAdornment>
                     }}
-                    helperText="Maximum Per Diem amount per day"
+                    helperText="Maximum per diem per day. Use $0 to disable per diem for this cost center."
                   />
 
                   <TextField
                     fullWidth
                     label="Minimum Hours Worked"
                     type="number"
-                    value={perDiemRules.minHours || 8}
-                    onChange={(e) => setPerDiemRules({ ...perDiemRules, minHours: parseFloat(e.target.value) })}
+                    value={perDiemRules.minHours ?? 8}
+                    onChange={(e) =>
+                      setPerDiemRules({
+                        ...perDiemRules,
+                        minHours: e.target.value === '' ? 0 : parseFloat(e.target.value),
+                      })
+                    }
                     margin="normal"
                     helperText="Minimum hours worked to qualify for Per Diem"
                   />
@@ -1249,8 +1259,13 @@ export const CostCenterManagement: React.FC<CostCenterManagementProps> = ({
                     fullWidth
                     label="Minimum Miles Driven"
                     type="number"
-                    value={perDiemRules.minMiles || 100}
-                    onChange={(e) => setPerDiemRules({ ...perDiemRules, minMiles: parseFloat(e.target.value) })}
+                    value={perDiemRules.minMiles ?? 100}
+                    onChange={(e) =>
+                      setPerDiemRules({
+                        ...perDiemRules,
+                        minMiles: e.target.value === '' ? 0 : parseFloat(e.target.value),
+                      })
+                    }
                     margin="normal"
                     helperText="Minimum miles driven to qualify for Per Diem"
                   />

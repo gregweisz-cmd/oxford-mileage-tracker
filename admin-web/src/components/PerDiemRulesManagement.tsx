@@ -140,8 +140,8 @@ export const PerDiemRulesManagement: React.FC<PerDiemRulesManagementProps> = ({ 
         return;
       }
 
-      if (formData.maxAmount <= 0) {
-        setError('Max amount must be greater than 0');
+      if (formData.maxAmount < 0 || Number.isNaN(formData.maxAmount)) {
+        setError('Max amount must be 0 or greater');
         return;
       }
 

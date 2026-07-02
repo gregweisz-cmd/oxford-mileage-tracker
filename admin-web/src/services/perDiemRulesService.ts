@@ -39,7 +39,7 @@ export class PerDiemRulesService {
     return {
       id: rule.id,
       costCenter: rule.costCenter,
-      maxAmount: Number(rule.maxAmount ?? 35),
+      maxAmount: rule.maxAmount != null ? Number(rule.maxAmount) : 35,
       minHours: Number(rule.minHours ?? 0),
       minMiles: Number(rule.minMiles ?? 0),
       minDistanceFromBase: Number(rule.minDistanceFromBase ?? 0),
