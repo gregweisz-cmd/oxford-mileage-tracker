@@ -69,7 +69,21 @@ export async function fetchGpsTripInvestigation(filters: {
   return response.json();
 }
 
-export async function fetchGpsTripGoogleMapsMiles(tripId: string): Promise<number> {
+export interface GpsTripRouteOption {
+  summary?: string;
+  miles: number;
+  distanceText?: string;
+  durationText?: string;
+  durationInTrafficText?: string | null;
+  warnings?: string[];
+}
+
+export interface GpsTripGoogleMapsRoutesResult {
+  miles: number;
+  routes: GpsTripRouteOption[];
+}
+
+export async function fetchGpsTripGoogleMapsRoutes(tripId: string): Promise<GpsTripGoogleMapsRoutesResult> {
   const response = await fetch(`${baseUrl}/gps-trips/${encodeURIComponent(tripId)}/google-maps-miles`, {
     method: 'GET',
     headers: {
@@ -84,10 +98,21 @@ export async function fetchGpsTripGoogleMapsMiles(tripId: string): Promise<numbe
   if (!response.ok) {
     throw new Error(data.error || `Failed to calculate Google Maps distance (${response.status})`);
   }
-  if (typeof data.miles !== 'number' || !Number.isFinite(data.miles)) {
+  const routes = Array.isArray(data.routes)
+    ? data.routes.filter(
+        (route: GpsTripRouteOption) => typeof route?.miles === 'number' && Number.isFinite(route.miles) && route.miles > 0
+      )
+    : [];
+  if (!routes.length) {
+    if (typeof data.miles === 'number' && Number.isFinite(data.miles)) {
+      return { miles: data.miles, routes: [{ miles: data.miles }] };
+    }
     throw new Error('Invalid distance response from server');
   }
-  return data.miles;
+  return {
+    miles: typeof data.miles === 'number' && Number.isFinite(data.miles) ? data.miles : routes[0].miles,
+    routes,
+  };
 }
 
 export function googleMapsCoordUrl(lat?: number | null, lng?: number | null): string | null {

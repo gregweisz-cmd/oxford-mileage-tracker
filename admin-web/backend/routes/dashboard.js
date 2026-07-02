@@ -3698,12 +3698,28 @@ router.get('/api/admin/reporting/gps-trips/:tripId/google-maps-miles', async (re
       return res.status(400).json({ error: 'Trip is missing valid start or end coordinates' });
     }
 
-    const miles = await distanceService.calculateDistanceBetweenCoords(
-      { lat: row.startLocationLat, lng: row.startLocationLng },
-      { lat: row.endLocationLat, lng: row.endLocationLng }
-    );
+    const origin = { lat: row.startLocationLat, lng: row.startLocationLng };
+    const destination = { lat: row.endLocationLat, lng: row.endLocationLng };
 
-    res.json({ miles });
+    let routes = [];
+    try {
+      routes = await distanceService.calculateRouteOptionsBetweenCoords(origin, destination, {
+        maxRoutes: 3,
+      });
+    } catch (directionsError) {
+      debugError('GPS trip Directions API failed, falling back to Distance Matrix:', directionsError.message);
+      const miles = await distanceService.calculateDistanceBetweenCoords(origin, destination);
+      if (miles == null) {
+        throw directionsError;
+      }
+      routes = [{ summary: '', miles, distanceText: `${miles} mi`, durationText: '', durationInTrafficText: null }];
+    }
+
+    if (!routes.length) {
+      return res.status(400).json({ error: 'No route options returned from Google Maps' });
+    }
+
+    res.json({ miles: routes[0].miles, routes });
   } catch (error) {
     debugError('GPS trip Google Maps distance failed:', error);
     res.status(400).json({ error: error.message || 'Failed to calculate distance' });

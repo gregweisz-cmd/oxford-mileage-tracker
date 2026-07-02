@@ -150,6 +150,42 @@ function summarizeRoute(route) {
 }
 
 /**
+ * Fetch alternative driving routes from Google Directions API.
+ * @param {string} origin - Address or "lat,lng"
+ * @param {string} destination - Address or "lat,lng"
+ * @param {{ maxRoutes?: number }} [options]
+ */
+async function fetchDirectionsRouteOptions(origin, destination, options = {}) {
+  const maxRoutes = options.maxRoutes ?? undefined;
+  const url =
+    `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}` +
+    `&destination=${encodeURIComponent(destination)}&mode=driving&alternatives=true&departure_time=now&units=imperial&key=${GOOGLE_MAPS_API_KEY}`;
+
+  const response = await axios.get(url, { timeout: 10000 });
+  const data = response.data;
+
+  if (data.status !== 'OK') {
+    throw new Error(data.error_message || data.status || 'Failed to calculate route options');
+  }
+  if (!Array.isArray(data.routes) || data.routes.length === 0) {
+    throw new Error('No route options returned from Google Maps');
+  }
+
+  const seen = new Set();
+  const routes = data.routes
+    .map(summarizeRoute)
+    .filter((route) => {
+      if (!route.miles || route.miles <= 0) return false;
+      const key = `${route.summary}|${route.miles}|${route.durationSeconds}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+  return maxRoutes != null ? routes.slice(0, maxRoutes) : routes;
+}
+
+/**
  * Calculate alternative driving routes between two addresses using Directions API.
  * @returns {Promise<Array<{summary:string,miles:number,distanceText:string,durationText:string,durationInTrafficText?:string|null}>>}
  */
@@ -166,35 +202,44 @@ async function calculateRouteOptions(startAddress, endAddress) {
 
   const origin = extractAddressFromLocation(String(startAddress).trim());
   const destination = extractAddressFromLocation(String(endAddress).trim());
-  const url =
-    `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}` +
-    `&destination=${encodeURIComponent(destination)}&mode=driving&alternatives=true&departure_time=now&units=imperial&key=${GOOGLE_MAPS_API_KEY}`;
+  return fetchDirectionsRouteOptions(origin, destination);
+}
 
-  const response = await axios.get(url, { timeout: 10000 });
-  const data = response.data;
-
-  if (data.status !== 'OK') {
-    throw new Error(data.error_message || data.status || 'Failed to calculate route options');
+function normalizeCoordPair(origin, destination) {
+  const oLat = Number(origin?.lat);
+  const oLng = Number(origin?.lng);
+  const dLat = Number(destination?.lat);
+  const dLng = Number(destination?.lng);
+  if (![oLat, oLng, dLat, dLng].every((n) => Number.isFinite(n))) {
+    return null;
   }
-  if (!Array.isArray(data.routes) || data.routes.length === 0) {
-    throw new Error('No route options returned from Google Maps');
-  }
+  if (Math.abs(oLat) < 0.0001 && Math.abs(oLng) < 0.0001) return null;
+  if (Math.abs(dLat) < 0.0001 && Math.abs(dLng) < 0.0001) return null;
+  return {
+    origin: `${oLat},${oLng}`,
+    destination: `${dLat},${dLng}`,
+  };
+}
 
-  const seen = new Set();
-  return data.routes
-    .map(summarizeRoute)
-    .filter((route) => {
-      if (!route.miles || route.miles <= 0) return false;
-      const key = `${route.summary}|${route.miles}|${route.durationSeconds}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+/**
+ * Alternative driving routes between two lat/lng points (Directions API).
+ * @returns {Promise<Array<{summary:string,miles:number,distanceText:string,durationText:string,durationInTrafficText?:string|null}>>}
+ */
+async function calculateRouteOptionsBetweenCoords(origin, destination, options = {}) {
+  if (!isConfigured()) {
+    throw new Error('Google Maps API key is not configured');
+  }
+  const coords = normalizeCoordPair(origin, destination);
+  if (!coords) {
+    throw new Error('Valid start and end coordinates are required');
+  }
+  return fetchDirectionsRouteOptions(coords.origin, coords.destination, options);
 }
 
 module.exports = {
   isConfigured,
   calculateDistance,
   calculateDistanceBetweenCoords,
-  calculateRouteOptions
+  calculateRouteOptions,
+  calculateRouteOptionsBetweenCoords
 };
