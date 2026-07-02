@@ -1386,13 +1386,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         endTripFlow.hideChoosingForPicker();
         navigation.navigate('MyFlock', { fromGpsTrackingEnd: true });
       } else if (option === 'oxfordHouse') {
-        const suggested = endLocationSuggestions.oxfordHouse;
-        if (suggested) {
-          openEndLocationModalWithDetails(suggested.details);
-        } else {
-          setOxfordHousePickerRole('end');
-          setShowOxfordHouseSearchModal(true);
-        }
+        endTripFlow.hideChoosingForPicker();
+        setOxfordHousePickerRole('end');
+        setShowOxfordHouseSearchModal(true);
       } else if (option === 'newLocation') {
         const suggested = endLocationSuggestions.newLocation;
         openEndLocationModalWithDetails(suggested?.details || null);
@@ -1558,6 +1554,15 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
       endTripFlow.finishSaving();
       endTripFlow.dismissEndTrip();
       Alert.alert('Error', 'Failed to stop GPS tracking');
+    }
+  };
+
+  const closeOxfordHouseSearchModal = (reopenEndLocationPicker = true) => {
+    const wasEndPicker = oxfordHousePickerRole === 'end';
+    setShowOxfordHouseSearchModal(false);
+    setOxfordHousePickerRole('start');
+    if (reopenEndLocationPicker && wasEndPicker && isTrackingRef.current) {
+      openEndLocationOptionsRef.current();
     }
   };
 
@@ -2448,10 +2453,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           visible
           transparent={true}
           animationType="slide"
-          onRequestClose={() => {
-            setShowOxfordHouseSearchModal(false);
-            setOxfordHousePickerRole('start');
-          }}
+          onRequestClose={() => closeOxfordHouseSearchModal()}
         >
           <KeyboardAvoidingView
             style={styles.modalContainer}
@@ -2464,10 +2466,7 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                     {oxfordHousePickerRole === 'end' ? 'Select End Location' : 'Search Oxford Houses'}
                   </Text>
                   <TouchableOpacity
-                    onPress={() => {
-                      setShowOxfordHouseSearchModal(false);
-                      setOxfordHousePickerRole('start');
-                    }}
+                    onPress={() => closeOxfordHouseSearchModal()}
                     style={styles.closeButton}
                   >
                     <MaterialIcons name="close" size={24} color="#666" />
@@ -2509,8 +2508,9 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
                   <TouchableOpacity
                     style={styles.manualEntryButton}
                     onPress={() => {
-                      setShowOxfordHouseSearchModal(false);
-                      if (oxfordHousePickerRole === 'end') endTripFlow.openCapture(endTripFlow.captureInitial);
+                      const wasEnd = oxfordHousePickerRole === 'end';
+                      closeOxfordHouseSearchModal(false);
+                      if (wasEnd) endTripFlow.openCapture(endTripFlow.captureInitial);
                       else setShowStartLocationModal(true);
                     }}
                   >
