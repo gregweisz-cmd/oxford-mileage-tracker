@@ -811,9 +811,14 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
         console.log('🔍 GPS: Navigating to My Flock');
         navigation.navigate('MyFlock', { fromGpsTrackingStart: true });
       } else if (option === 'oxfordHouse') {
-        console.log('🔍 GPS: Showing Oxford House search modal');
-        setOxfordHousePickerRole('start');
-        setShowOxfordHouseSearchModal(true);
+        const suggested = startLocationSuggestions.oxfordHouse;
+        if (suggested) {
+          void startGpsTracking(suggested.details);
+        } else {
+          console.log('🔍 GPS: Showing Oxford House search modal');
+          setOxfordHousePickerRole('start');
+          setShowOxfordHouseSearchModal(true);
+        }
       } else if (option === 'newLocation') {
         console.log('🔍 GPS: Showing manual location entry modal');
         // Show manual location entry modal
@@ -929,6 +934,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             address: `${matchedOxfordHouse.address}, ${matchedOxfordHouse.city}, ${matchedOxfordHouse.state} ${matchedOxfordHouse.zipCode}`,
             latitude: currentLat,
             longitude: currentLon,
+            source: 'oxfordHouse',
+            sourceId: matchedOxfordHouse.id,
           },
           reason: `Looks like you're at ${matchedOxfordHouse.name}.`,
           confidenceLabel: 'Address match',
@@ -1088,6 +1095,8 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
             address: `${matchedOxfordHouse.address}, ${matchedOxfordHouse.city}, ${matchedOxfordHouse.state} ${matchedOxfordHouse.zipCode}`,
             latitude: currentLat,
             longitude: currentLon,
+            source: 'oxfordHouse',
+            sourceId: matchedOxfordHouse.id,
           },
           reason: `Looks like you're at ${matchedOxfordHouse.name}.`,
           confidenceLabel: 'Address match',
@@ -1384,14 +1393,24 @@ export default function GpsTrackingScreen({ navigation, route }: GpsTrackingScre
           });
         }
       } else if (option === 'favoriteAddresses') {
-        awaitingEndLocationPickerRef.current = true;
-        navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
+        const suggested = endLocationSuggestions.favoriteAddresses;
+        if (suggested) {
+          openEndLocationModalWithDetails(suggested.details);
+        } else {
+          awaitingEndLocationPickerRef.current = true;
+          navigation.navigate('SavedAddresses', { fromGpsTrackingEnd: true });
+        }
       } else if (option === 'myFlock') {
         awaitingEndLocationPickerRef.current = true;
         navigation.navigate('MyFlock', { fromGpsTrackingEnd: true });
       } else if (option === 'oxfordHouse') {
-        setOxfordHousePickerRole('end');
-        setShowOxfordHouseSearchModal(true);
+        const suggested = endLocationSuggestions.oxfordHouse;
+        if (suggested) {
+          openEndLocationModalWithDetails(suggested.details);
+        } else {
+          setOxfordHousePickerRole('end');
+          setShowOxfordHouseSearchModal(true);
+        }
       } else if (option === 'newLocation') {
         const suggested = endLocationSuggestions.newLocation;
         openEndLocationModalWithDetails(suggested?.details || null);
