@@ -1212,6 +1212,46 @@ router.post('/api/employees/:id/clear-login-attempts', requireAnyRole(['admin'])
 });
 
 /**
+ * Reset onboarding + setup wizard so the user sees first-run flows again (admin only).
+ */
+router.post('/api/employees/:id/reset-onboarding', requireAnyRole(['admin']), (req, res) => {
+  const { id } = req.params;
+  const db = dbService.getDb();
+  const userRole = (req.auth?.role || '').toLowerCase();
+
+  if (userRole !== 'admin') {
+    return res.status(403).json({ error: 'Only admins can reset onboarding.' });
+  }
+
+  const now = new Date().toISOString();
+  db.run(
+    'UPDATE employees SET hasCompletedOnboarding = 0, hasCompletedSetupWizard = 0, updatedAt = ? WHERE id = ?',
+    [now, id],
+    function(err) {
+      if (err) {
+        debugError('Error resetting onboarding:', err);
+        return res.status(500).json({ error: err.message });
+      }
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+      debugLog(`✅ Reset onboarding for employee ${id}`);
+      logAuditEvent({
+        action: 'employee_onboarding_reset',
+        actor: req.authenticatedEmployee,
+        targetType: 'employee',
+        targetId: id,
+      });
+      res.json({
+        message: 'Onboarding reset. User will see intro slides and setup wizard on next login.',
+        hasCompletedOnboarding: false,
+        hasCompletedSetupWizard: false,
+      });
+    }
+  );
+});
+
+/**
  * Get supervisor team
  */
 router.get('/api/supervisors/:supervisorId/team', requireAuth, (req, res) => {

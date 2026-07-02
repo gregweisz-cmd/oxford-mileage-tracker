@@ -990,6 +990,31 @@ export class DatabaseService {
     }
   }
 
+  /** Apply onboarding/setup flags from backend (e.g. after admin reset or login). */
+  static async applyOnboardingFlagsFromBackend(
+    employeeId: string,
+    flags: { hasCompletedOnboarding?: unknown; hasCompletedSetupWizard?: unknown }
+  ): Promise<void> {
+    const toInt = (value: unknown) => (value === true || value === 1 || value === '1' ? 1 : 0);
+    const onboarding = toInt(flags.hasCompletedOnboarding);
+    const setupWizard = toInt(flags.hasCompletedSetupWizard);
+    const now = new Date().toISOString();
+
+    await withDatabase(async (database) => {
+      await database.runAsync(
+        'UPDATE employees SET hasCompletedOnboarding = ?, hasCompletedSetupWizard = ?, updatedAt = ? WHERE id = ?',
+        [onboarding, setupWizard, now, employeeId]
+      );
+      try {
+        await database.runAsync(
+          'UPDATE current_employee SET hasCompletedOnboarding = ?, hasCompletedSetupWizard = ? WHERE employeeId = ?',
+          [onboarding, setupWizard, employeeId]
+        );
+      } catch {
+        // current_employee row may not exist when not logged in as this user
+      }
+    });
+  }
 
 
 

@@ -50,6 +50,7 @@ import {
   ArrowDownward,
   FilterList,
   MergeType,
+  Replay,
 } from '@mui/icons-material';
 import { EmployeeApiService } from '../services/employeeApiService';
 import { Employee } from '../types';
@@ -1024,6 +1025,25 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
     }
   };
 
+  const handleResetOnboarding = async (employee: Employee) => {
+    if (
+      !window.confirm(
+        `Reset onboarding for ${employee.name}?\n\nThey will see the intro slides and setup wizard again the next time they log in on the phone app or Staff Portal. Their saved mileage, receipts, and reports are not deleted.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await EmployeeApiService.resetEmployeeOnboarding(employee.id);
+      alert(
+        `Onboarding reset for ${employee.name}. Ask them to log out and log back in (or sync on mobile) to see the first-run screens again.`
+      );
+    } catch (error) {
+      console.error('Error resetting onboarding:', error);
+      alert(`Failed to reset onboarding: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    }
+  };
+
   // Quick Cost Center Edit Functions
   const handleQuickCostCenterEdit = (employee: Employee) => {
     const costCenters = parseCostCenters(employee.costCenters);
@@ -1569,6 +1589,16 @@ export const EmployeeManagementComponent: React.FC<EmployeeManagementProps> = ({
                                   sx={{ padding: '4px' }}
                                 >
                                   <LockOpen fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Reset onboarding (intro slides + setup wizard on next login)">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => void handleResetOnboarding(employee)}
+                                  color="secondary"
+                                  sx={{ padding: '4px' }}
+                                >
+                                  <Replay fontSize="small" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Archive">

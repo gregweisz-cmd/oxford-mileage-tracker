@@ -112,6 +112,11 @@ export class EmployeeApiService {
     }
   }
 
+  /** Reset onboarding + setup wizard flags (admin only). */
+  static async resetEmployeeOnboarding(id: string): Promise<void> {
+    await apiPost(`/api/employees/${id}/reset-onboarding`, {});
+  }
+
   static async archiveEmployee(id: string): Promise<void> {
     try {
       await apiPost(`/api/employees/${id}/archive`);

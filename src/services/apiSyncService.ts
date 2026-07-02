@@ -2846,6 +2846,10 @@ export class ApiSyncService {
             phoneNumber: backendEmp.phoneNumber ?? '',
             oxfordHouseId: backendEmp.oxfordHouseId ?? ''
           });
+          await DatabaseService.applyOnboardingFlagsFromBackend(localLookupId, {
+            hasCompletedOnboarding: backendEmp.hasCompletedOnboarding,
+            hasCompletedSetupWizard: backendEmp.hasCompletedSetupWizard,
+          });
           debugLog(`🔄 ApiSync: Updated local employee ${localLookupId} (${backendEmp.name}) from backend`);
         } catch (err) {
           debugWarn(`⚠️ ApiSync: Failed to sync employee ${backendEmp.id} to local:`, err);

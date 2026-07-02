@@ -148,6 +148,10 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
         defaultCostCenter:
           employeeData.defaultCostCenter ?? employeeData.costCenters?.[0] ?? '',
       });
+      await DatabaseService.applyOnboardingFlagsFromBackend(canonicalId, {
+        hasCompletedOnboarding: employeeData.hasCompletedOnboarding,
+        hasCompletedSetupWizard: employeeData.hasCompletedSetupWizard,
+      });
 
       const updatedEmployee = await DatabaseService.getEmployeeById(canonicalId);
       if (!updatedEmployee) {
@@ -172,6 +176,10 @@ export default function LoginScreen({ navigation, onLogin }: LoginScreenProps) {
       costCenters: employeeData.costCenters || [],
       selectedCostCenters: employeeData.selectedCostCenters || employeeData.costCenters || [],
       defaultCostCenter: employeeData.defaultCostCenter || employeeData.costCenters?.[0] || '',
+    });
+    await DatabaseService.applyOnboardingFlagsFromBackend(employeeData.id, {
+      hasCompletedOnboarding: employeeData.hasCompletedOnboarding,
+      hasCompletedSetupWizard: employeeData.hasCompletedSetupWizard,
     });
 
     await DatabaseService.setCurrentEmployee(employeeData.id, persistStayLoggedIn);
