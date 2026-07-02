@@ -4,6 +4,7 @@ export interface GpsTripInvestigationRow {
   employeeName: string;
   date: string;
   miles: number;
+  trackedMiles?: number;
   purpose: string;
   startLocation: string;
   endLocation: string;
@@ -66,6 +67,27 @@ export async function fetchGpsTripInvestigation(filters: {
   }
 
   return response.json();
+}
+
+export async function fetchGpsTripGoogleMapsMiles(tripId: string): Promise<number> {
+  const response = await fetch(`${baseUrl}/gps-trips/${encodeURIComponent(tripId)}/google-maps-miles`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+    credentials: 'include',
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || `Failed to calculate Google Maps distance (${response.status})`);
+  }
+  if (typeof data.miles !== 'number' || !Number.isFinite(data.miles)) {
+    throw new Error('Invalid distance response from server');
+  }
+  return data.miles;
 }
 
 export function googleMapsCoordUrl(lat?: number | null, lng?: number | null): string | null {

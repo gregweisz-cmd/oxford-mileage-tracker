@@ -24,6 +24,7 @@ import FormDatePicker from './FormDatePicker';
 import { Employee } from '../types';
 import {
   fetchGpsTripInvestigation,
+  fetchGpsTripGoogleMapsMiles,
   googleMapsCoordUrl,
   GpsTripInvestigationRow,
 } from '../services/gpsTripInvestigationService';
@@ -71,6 +72,16 @@ const CoordLink: React.FC<{ lat?: number; lng?: number; label?: string }> = ({ l
   );
 };
 
+const hasPickedTripCoords = (trip: GpsTripInvestigationRow) => {
+  const coords = [
+    trip.startLocationLat,
+    trip.startLocationLng,
+    trip.endLocationLat,
+    trip.endLocationLng,
+  ];
+  return coords.every((value) => value != null && Number.isFinite(value) && Math.abs(value) > 0.0001);
+};
+
 interface GpsTripInvestigationTabProps {
   employees: Employee[];
 }
@@ -83,6 +94,9 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
   const [trips, setTrips] = useState<GpsTripInvestigationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [googleMapsMilesByTripId, setGoogleMapsMilesByTripId] = useState<Record<string, number>>({});
+  const [googleMapsLoadingByTripId, setGoogleMapsLoadingByTripId] = useState<Record<string, boolean>>({});
+  const [googleMapsErrorByTripId, setGoogleMapsErrorByTripId] = useState<Record<string, string>>({});
 
   const activeEmployees = useMemo(
     () =>
@@ -95,6 +109,9 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
   const loadTrips = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setGoogleMapsMilesByTripId({});
+    setGoogleMapsLoadingByTripId({});
+    setGoogleMapsErrorByTripId({});
     try {
       const data = await fetchGpsTripInvestigation({
         startDate,
@@ -115,6 +132,73 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
     void loadTrips();
   }, [loadTrips]);
 
+  const handleCalculateGoogleMapsMiles = useCallback(async (tripId: string) => {
+    setGoogleMapsLoadingByTripId((prev) => ({ ...prev, [tripId]: true }));
+    setGoogleMapsErrorByTripId((prev) => {
+      const next = { ...prev };
+      delete next[tripId];
+      return next;
+    });
+    try {
+      const miles = await fetchGpsTripGoogleMapsMiles(tripId);
+      setGoogleMapsMilesByTripId((prev) => ({ ...prev, [tripId]: miles }));
+    } catch (err) {
+      debugError('Failed to calculate Google Maps miles', err);
+      setGoogleMapsErrorByTripId((prev) => ({
+        ...prev,
+        [tripId]: err instanceof Error ? err.message : 'Failed to calculate distance',
+      }));
+    } finally {
+      setGoogleMapsLoadingByTripId((prev) => ({ ...prev, [tripId]: false }));
+    }
+  }, []);
+
+  const renderGoogleMapsCell = (trip: GpsTripInvestigationRow) => {
+    const miles = googleMapsMilesByTripId[trip.id];
+    const isLoading = !!googleMapsLoadingByTripId[trip.id];
+    const rowError = googleMapsErrorByTripId[trip.id];
+    const canCalculate = hasPickedTripCoords(trip);
+
+    if (miles != null) {
+      return (
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Typography variant="body2">{miles}</Typography>
+          <Button
+            size="small"
+            variant="text"
+            disabled={isLoading}
+            onClick={() => void handleCalculateGoogleMapsMiles(trip.id)}
+          >
+            Recalc
+          </Button>
+        </Stack>
+      );
+    }
+
+    return (
+      <Stack spacing={0.5}>
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={!canCalculate || isLoading}
+          onClick={() => void handleCalculateGoogleMapsMiles(trip.id)}
+        >
+          {isLoading ? 'Calculating…' : 'Calculate'}
+        </Button>
+        {!canCalculate && (
+          <Typography variant="caption" color="text.secondary">
+            Missing picked coords
+          </Typography>
+        )}
+        {rowError && (
+          <Typography variant="caption" color="error">
+            {rowError}
+          </Typography>
+        )}
+      </Stack>
+    );
+  };
+
   const renderGapChip = (gapMiles: number | null | undefined, late?: boolean) => {
     if (gapMiles == null) {
       return <Typography variant="caption" color="text.secondary">No GPS audit</Typography>;
@@ -132,7 +216,9 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 900 }}>
         Compare where the phone was when tracking <strong>started / stopped</strong> (device GPS) vs the
-        trip&apos;s picked start/end locations. A large gap often means tracking was started late or ended early.
+        trip&apos;s picked start/end locations. <strong>Miles tracked</strong> is what the phone logged.
+        Use <strong>Calculate</strong> on a row to fetch Google Maps driving miles between the picked start and end
+        (not saved — shown only for that review). A large gap often means tracking was started late or ended early.
         New trips include audit data after testers sync on an updated mobile build.
       </Typography>
 
@@ -171,7 +257,12 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
                 <TableCell>Employee</TableCell>
                 <TableCell>Tracker started</TableCell>
                 <TableCell>Tracker stopped</TableCell>
-                <TableCell>Miles</TableCell>
+                <TableCell>Miles tracked</TableCell>
+                <TableCell>
+                  <Tooltip title="On-demand driving distance between picked start and end (Google Distance Matrix)">
+                    <span>Google Maps mi</span>
+                  </Tooltip>
+                </TableCell>
                 <TableCell>Picked start → device at Start</TableCell>
                 <TableCell>Picked end → device at Stop</TableCell>
                 <TableCell>BA on file</TableCell>
@@ -180,7 +271,7 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
             <TableBody>
               {trips.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                     No GPS-tracked trips in this range.
                   </TableCell>
                 </TableRow>
@@ -216,7 +307,8 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
                       <Typography variant="body2">{formatDateTime(trip.gpsTrackEndedAt)}</Typography>
                       <CoordLink lat={trip.gpsEndLat} lng={trip.gpsEndLng} />
                     </TableCell>
-                    <TableCell>{trip.miles}</TableCell>
+                    <TableCell>{trip.trackedMiles ?? trip.miles}</TableCell>
+                    <TableCell>{renderGoogleMapsCell(trip)}</TableCell>
                     <TableCell>
                       <Typography variant="body2">
                         {trip.startLocationName || trip.startLocation || '—'}

@@ -14,6 +14,7 @@ const dateHelpers = require('../utils/dateHelpers');
 const { normalizeCostCenter } = require('../utils/costCenterNormalizer');
 const { debugLog, debugWarn, debugError } = require('../debug');
 const { haversineMiles, hasValidCoords } = require('../utils/geoDistance');
+const distanceService = require('../services/distanceService');
 const { requireAuth, requireAnyRole, getEffectiveRole } = require('../middleware/auth');
 
 // Admin reporting + schedules require authenticated admin/finance role
@@ -3644,6 +3645,7 @@ router.get('/api/admin/reporting/gps-trips', async (req, res) => {
 
       return {
         ...row,
+        trackedMiles: row.miles,
         startGapMiles: startGapMiles != null ? Number(startGapMiles.toFixed(2)) : null,
         endGapMiles: endGapMiles != null ? Number(endGapMiles.toFixed(2)) : null,
         tripDurationMinutes,
@@ -3664,6 +3666,47 @@ router.get('/api/admin/reporting/gps-trips', async (req, res) => {
   } catch (error) {
     debugError('❌ Error generating GPS trip investigation data:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/api/admin/reporting/gps-trips/:tripId/google-maps-miles', async (req, res) => {
+  const db = dbService.getDb();
+  const tripId = typeof req.params.tripId === 'string' ? req.params.tripId.trim() : '';
+  if (!tripId) {
+    return res.status(400).json({ error: 'Trip id is required' });
+  }
+  if (!distanceService.isConfigured()) {
+    return res.status(503).json({ error: 'Google Maps API key is not configured' });
+  }
+
+  try {
+    const row = await dbGetAsync(
+      `
+        SELECT startLocationLat, startLocationLng, endLocationLat, endLocationLng
+        FROM mileage_entries
+        WHERE id = ? AND isGpsTracked = 1
+      `,
+      [tripId]
+    );
+    if (!row) {
+      return res.status(404).json({ error: 'GPS trip not found' });
+    }
+    if (
+      !hasValidCoords(row.startLocationLat, row.startLocationLng) ||
+      !hasValidCoords(row.endLocationLat, row.endLocationLng)
+    ) {
+      return res.status(400).json({ error: 'Trip is missing valid start or end coordinates' });
+    }
+
+    const miles = await distanceService.calculateDistanceBetweenCoords(
+      { lat: row.startLocationLat, lng: row.startLocationLng },
+      { lat: row.endLocationLat, lng: row.endLocationLng }
+    );
+
+    res.json({ miles });
+  } catch (error) {
+    debugError('GPS trip Google Maps distance failed:', error);
+    res.status(400).json({ error: error.message || 'Failed to calculate distance' });
   }
 });
 

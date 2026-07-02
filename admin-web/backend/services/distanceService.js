@@ -77,6 +77,28 @@ async function getDistanceMeters(origin, destination) {
 }
 
 /**
+ * Calculate driving distance in miles between two lat/lng points.
+ * @returns {Promise<number|null>} Rounded miles, or null when coords are invalid
+ */
+async function calculateDistanceBetweenCoords(origin, destination) {
+  if (!isConfigured()) {
+    return null;
+  }
+  const oLat = Number(origin?.lat);
+  const oLng = Number(origin?.lng);
+  const dLat = Number(destination?.lat);
+  const dLng = Number(destination?.lng);
+  if (![oLat, oLng, dLat, dLng].every((n) => Number.isFinite(n))) {
+    return null;
+  }
+  if (Math.abs(oLat) < 0.0001 && Math.abs(oLng) < 0.0001) return null;
+  if (Math.abs(dLat) < 0.0001 && Math.abs(dLng) < 0.0001) return null;
+
+  const meters = await getDistanceMeters({ lat: oLat, lng: oLng }, { lat: dLat, lng: dLng });
+  return Math.round(meters * 0.000621371);
+}
+
+/**
  * Calculate driving distance in miles between two addresses
  * @param {string} startAddress - Full address string
  * @param {string} endAddress - Full address string
@@ -173,5 +195,6 @@ async function calculateRouteOptions(startAddress, endAddress) {
 module.exports = {
   isConfigured,
   calculateDistance,
+  calculateDistanceBetweenCoords,
   calculateRouteOptions
 };
