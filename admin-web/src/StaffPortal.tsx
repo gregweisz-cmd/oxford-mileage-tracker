@@ -58,6 +58,7 @@ import {
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
   Crop as CropIcon,
+  TextFields as TextFieldsIcon,
   Visibility as VisibilityIcon,
   Save as SaveIcon,
 } from '@mui/icons-material';
@@ -111,6 +112,7 @@ import {
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
 import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
 import ReceiptImageCropModal from './components/ReceiptImageCropModal';
+import ReceiptImageAnnotateModal from './components/ReceiptImageAnnotateModal';
 import { ConfirmDeleteDialog } from './components/ConfirmDeleteDialog';
 import { SignatureUploadDialog } from './components/SignatureUploadDialog';
 import {
@@ -1141,6 +1143,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
   const [cropModalReceipt, setCropModalReceipt] = useState<{ id: string; imageUri: string } | null>(null);
+  const [annotateModalReceipt, setAnnotateModalReceipt] = useState<{ id: string; imageUri: string } | null>(null);
   const [viewImageUrl, setViewImageUrl] = useState<string | null>(null);
   const [viewPdfDialogOpen, setViewPdfDialogOpen] = useState(false);
   const [viewPdfDisplayUrl, setViewPdfDisplayUrl] = useState<string | null>(null);
@@ -4131,15 +4134,13 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     }
   };
 
-  // Handle applying cropped receipt image (from crop modal)
-  const handleCropApply = useCallback(async (croppedDataUrl: string) => {
-    if (!cropModalReceipt) return;
-    const receiptId = cropModalReceipt.id;
-    const updatedReceipts: ReceiptData[] = receipts.map(receipt =>
-      receipt.id === receiptId ? { ...receipt, imageUri: croppedDataUrl, fileType: 'image' } : receipt
+  // Handle applying cropped or annotated receipt image
+  const saveReceiptImageDataUrl = useCallback(async (receiptId: string, imageDataUrl: string) => {
+    const updatedReceipts: ReceiptData[] = receipts.map((receipt) =>
+      receipt.id === receiptId ? { ...receipt, imageUri: imageDataUrl, fileType: 'image' } : receipt
     );
     setReceipts(updatedReceipts);
-    setReceiptImageLoadErrors(prev => {
+    setReceiptImageLoadErrors((prev) => {
       const next = new Set(prev);
       next.delete(receiptId);
       return next;
@@ -4147,23 +4148,36 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
     if (employeeData) {
       setEmployeeData({ ...employeeData, receipts: updatedReceipts } as any);
     }
-    setCropModalReceipt(null);
     try {
-      const receipt = updatedReceipts.find(r => r.id === receiptId);
+      const receipt = updatedReceipts.find((r) => r.id === receiptId);
       if (receipt) {
         await apiPut(`/api/receipts/${receiptId}`, {
           ...receipt,
-          imageUri: croppedDataUrl,
+          imageUri: imageDataUrl,
           fileType: 'image',
         });
         await syncReportData();
         showSuccess('Receipt image updated');
       }
     } catch (error) {
-      debugError('Error saving cropped receipt image:', error);
-      showError('Failed to save cropped image. Please try again.');
+      debugError('Error saving receipt image:', error);
+      showError('Failed to save receipt image. Please try again.');
     }
-  }, [cropModalReceipt, receipts, employeeData, syncReportData, showSuccess, showError]);
+  }, [receipts, employeeData, syncReportData, showSuccess, showError]);
+
+  const handleCropApply = useCallback(async (croppedDataUrl: string) => {
+    if (!cropModalReceipt) return;
+    const receiptId = cropModalReceipt.id;
+    setCropModalReceipt(null);
+    await saveReceiptImageDataUrl(receiptId, croppedDataUrl);
+  }, [cropModalReceipt, saveReceiptImageDataUrl]);
+
+  const handleAnnotateApply = useCallback(async (annotatedDataUrl: string) => {
+    if (!annotateModalReceipt) return;
+    const receiptId = annotateModalReceipt.id;
+    setAnnotateModalReceipt(null);
+    await saveReceiptImageDataUrl(receiptId, annotatedDataUrl);
+  }, [annotateModalReceipt, saveReceiptImageDataUrl]);
 
   // PDF Generation Functions
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -9524,6 +9538,28 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                     <Button
                                       size="small"
                                       variant="outlined"
+                                      startIcon={<TextFieldsIcon sx={{ fontSize: 14 }} />}
+                                      onClick={async () => {
+                                        try {
+                                          const blob = await fetchReceiptFileBlob(
+                                            raw,
+                                            receipt.id,
+                                            getStaffPortalAuthHeaders()
+                                          );
+                                          const blobUrl = URL.createObjectURL(blob);
+                                          setAnnotateModalReceipt({ id: receipt.id, imageUri: blobUrl });
+                                        } catch (error) {
+                                          debugError('Failed to load receipt image for annotation:', error);
+                                          showError('Failed to load image');
+                                        }
+                                      }}
+                                      sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
+                                    >
+                                      Add text
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
                                       startIcon={<CropIcon sx={{ fontSize: 14 }} />}
                                       onClick={async () => {
                                         try {
@@ -10050,6 +10086,18 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ReceiptImageAnnotateModal
+        open={!!annotateModalReceipt}
+        imageSrc={annotateModalReceipt?.imageUri ?? ''}
+        onClose={() => {
+          if (annotateModalReceipt?.imageUri?.startsWith('blob:')) {
+            URL.revokeObjectURL(annotateModalReceipt.imageUri);
+          }
+          setAnnotateModalReceipt(null);
+        }}
+        onApply={handleAnnotateApply}
+      />
 
       <ReceiptImageCropModal
         open={!!cropModalReceipt}
