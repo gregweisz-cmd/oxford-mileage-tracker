@@ -1371,6 +1371,7 @@ export class ApiSyncService {
             vendor: receipt.vendor || '',
             description: receipt.description || '',
             category: receipt.category || '',
+            fileType: receipt.fileType || 'image',
             // Only include imageUri if it's a backend path, not a local file path
             // This ensures the web portal can access the image
             imageUri: backendImageUri && !backendImageUri.startsWith('file://') ? backendImageUri : undefined

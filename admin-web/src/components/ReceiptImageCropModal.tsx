@@ -53,7 +53,7 @@ function loadImageForCrop(src: string): Promise<HTMLImageElement> {
       img.src = src;
       return;
     }
-    fetch(src, { mode: 'cors', credentials: 'omit' })
+    fetch(src, { mode: 'cors', credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.blob();

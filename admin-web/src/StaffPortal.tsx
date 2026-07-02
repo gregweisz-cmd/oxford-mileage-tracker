@@ -142,6 +142,10 @@ import { buildPerDiemBreakdownFromReceipts, getCostCenterAmountFromReport } from
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com';
 
 /** Resolve receipt imageUri to a URL the browser can load (data URLs and backend /uploads/ paths). */
+function getReceiptApiOrigin(): string {
+  return (process.env.REACT_APP_API_URL || 'https://oxford-mileage-backend.onrender.com').replace(/\/api\/?$/, '');
+}
+
 function getReceiptImageUrl(uri: string | undefined): string {
   const raw = (uri || '').trim();
   if (!raw) return '';
@@ -153,7 +157,7 @@ function getReceiptImageUrl(uri: string | undefined): string {
       : raw.startsWith('uploads')
         ? `/${raw}`
         : `/uploads/${raw}`;
-  return `${API_BASE_URL}${path}`;
+  return `${getReceiptApiOrigin()}${path}`;
 }
 
 function isPdfReceiptUri(uri: string | undefined): boolean {
@@ -218,7 +222,7 @@ async function fetchReceiptFileBlob(
   }
 
   const candidates = [
-    receiptId ? `${API_BASE_URL}/api/receipts/${encodeURIComponent(receiptId)}/file` : null,
+    receiptId ? `${getReceiptApiOrigin()}/api/receipts/${encodeURIComponent(receiptId)}/file` : null,
     getReceiptImageUrl(trimmed) || null,
   ].filter((url): url is string => !!url);
 
@@ -1291,6 +1295,29 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
   const closeReceiptImageViewer = useCallback(() => {
     revokeReceiptBlobUrl(viewImageBlobRef);
     setViewImageUrl(null);
+  }, []);
+
+  const openReceiptImageViewer = useCallback(async (raw: string, receiptId?: string) => {
+    if (!raw?.trim()) {
+      showError('No image available for this receipt');
+      return;
+    }
+    revokeReceiptBlobUrl(viewImageBlobRef);
+    setViewImageUrl(null);
+    try {
+      const blob = await fetchReceiptFileBlob(raw, receiptId, getStaffPortalAuthHeaders());
+      const contentType = (blob.type || '').toLowerCase();
+      const imageBlob =
+        contentType.startsWith('image/')
+          ? blob
+          : new Blob([await blob.arrayBuffer()], { type: 'image/jpeg' });
+      const imageBlobUrl = URL.createObjectURL(imageBlob);
+      viewImageBlobRef.current = imageBlobUrl;
+      setViewImageUrl(imageBlobUrl);
+    } catch (error) {
+      debugError('Failed to load receipt image:', error);
+      showError('Failed to load image');
+    }
   }, []);
 
   const openReceiptPdfViewer = useCallback(async (raw: string, receiptId?: string, fileType?: string) => {
@@ -9488,8 +9515,7 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                       variant="outlined"
                                       startIcon={<VisibilityIcon sx={{ fontSize: 14 }} />}
                                       onClick={() => {
-                                        const url = getReceiptImageUrl(raw);
-                                        if (url) setViewImageUrl(url);
+                                        void openReceiptImageViewer(raw, receipt.id);
                                       }}
                                       sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
                                     >
@@ -9499,7 +9525,20 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
                                       size="small"
                                       variant="outlined"
                                       startIcon={<CropIcon sx={{ fontSize: 14 }} />}
-                                      onClick={() => setCropModalReceipt({ id: receipt.id, imageUri: getReceiptImageUrl(raw) })}
+                                      onClick={async () => {
+                                        try {
+                                          const blob = await fetchReceiptFileBlob(
+                                            raw,
+                                            receipt.id,
+                                            getStaffPortalAuthHeaders()
+                                          );
+                                          const blobUrl = URL.createObjectURL(blob);
+                                          setCropModalReceipt({ id: receipt.id, imageUri: blobUrl });
+                                        } catch (error) {
+                                          debugError('Failed to load receipt image for crop:', error);
+                                          showError('Failed to load image');
+                                        }
+                                      }}
                                       sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, px: 0.75 }}
                                     >
                                       Crop
@@ -10015,7 +10054,12 @@ const StaffPortal: React.FC<StaffPortalProps> = ({
       <ReceiptImageCropModal
         open={!!cropModalReceipt}
         imageSrc={cropModalReceipt?.imageUri ?? ''}
-        onClose={() => setCropModalReceipt(null)}
+        onClose={() => {
+          if (cropModalReceipt?.imageUri?.startsWith('blob:')) {
+            URL.revokeObjectURL(cropModalReceipt.imageUri);
+          }
+          setCropModalReceipt(null);
+        }}
         onApply={handleCropApply}
       />
 

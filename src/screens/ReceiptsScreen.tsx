@@ -71,6 +71,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [showImageModal, setShowImageModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [imageUpdating, setImageUpdating] = useState(false);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedReceiptIds, setSelectedReceiptIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
@@ -378,53 +379,53 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
   
   const handleEditReceiptImage = async (receipt: Receipt) => {
     try {
-      // Request permissions
+      setShowImageModal(false);
+
+      await new Promise<void>((resolve) => {
+        InteractionManager.runAfterInteractions(() => resolve());
+      });
+
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission Required', 'Please grant permission to access your photo library.');
         return;
       }
-      
-      // Show options: Take Photo, Choose from Library, Cancel
+
+      const runPicker = async (source: 'camera' | 'library') => {
+        if (source === 'camera') {
+          const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
+          if (cameraStatus.status !== 'granted') {
+            Alert.alert('Permission Required', 'Please grant camera permission.');
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.8,
+          });
+          if (!result.canceled && result.assets[0]) {
+            await updateReceiptImage(receipt, result.assets[0].uri);
+          }
+          return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: false,
+          quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]) {
+          await updateReceiptImage(receipt, result.assets[0].uri);
+        }
+      };
+
       Alert.alert(
         'Edit Receipt Image',
         'Choose an option',
         [
-          {
-            text: 'Take Photo',
-            onPress: async () => {
-              const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
-              if (cameraStatus.status !== 'granted') {
-                Alert.alert('Permission Required', 'Please grant camera permission.');
-                return;
-              }
-              const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: false,
-                quality: 0.8,
-              });
-              if (!result.canceled && result.assets[0]) {
-                await updateReceiptImage(receipt, result.assets[0].uri);
-              }
-            },
-          },
-          {
-            text: 'Choose from Library',
-            onPress: async () => {
-              const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: false,
-                quality: 0.8,
-              });
-              if (!result.canceled && result.assets[0]) {
-                await updateReceiptImage(receipt, result.assets[0].uri);
-              }
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
+          { text: 'Take Photo', onPress: () => void runPicker('camera') },
+          { text: 'Choose from Library', onPress: () => void runPicker('library') },
+          { text: 'Cancel', style: 'cancel' },
         ]
       );
     } catch (error) {
@@ -432,37 +433,42 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
       Alert.alert('Error', 'Failed to edit receipt image.');
     }
   };
-  
+
   const updateReceiptImage = async (receipt: Receipt, newImageUri: string) => {
     try {
-      setLoading(true);
-      
-      // Update receipt in database
+      setImageUpdating(true);
+
       await DatabaseService.updateReceipt(receipt.id, {
         ...receipt,
         imageUri: newImageUri,
+        fileType: 'image',
       });
-      
-      // Refresh receipts list
-      await loadData();
-      
-      // Update selected receipt if it's the one being edited
-      if (selectedReceipt && selectedReceipt.id === receipt.id) {
-        setSelectedReceipt({ ...selectedReceipt, imageUri: newImageUri });
-        // Clear error state for this receipt
-        setImageErrors(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(receipt.id);
-          return newSet;
-        });
+
+      const applyListUpdate = (list: Receipt[]) =>
+        list.map((item) =>
+          item.id === receipt.id
+            ? { ...item, imageUri: newImageUri, fileType: 'image' as const }
+            : item
+        );
+      setAllReceipts((prev) => applyListUpdate(prev));
+      setReceipts((prev) => applyListUpdate(prev));
+
+      if (selectedReceipt?.id === receipt.id) {
+        setSelectedReceipt({ ...selectedReceipt, imageUri: newImageUri, fileType: 'image' });
       }
-      
+
+      setImageErrors((prev) => {
+        const next = new Set(prev);
+        next.delete(receipt.id);
+        return next;
+      });
+
       Alert.alert('Success', 'Receipt image updated successfully.');
     } catch (error) {
       console.error('Error updating receipt image:', error);
       Alert.alert('Error', 'Failed to update receipt image.');
     } finally {
-      setLoading(false);
+      setImageUpdating(false);
     }
   };
 
@@ -1129,9 +1135,12 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
                 <TouchableOpacity
                   style={styles.editImageButton}
                   onPress={() => handleEditReceiptImage(selectedReceipt)}
+                  disabled={imageUpdating}
                 >
                   <MaterialIcons name="edit" size={20} color="#fff" />
-                  <Text style={styles.editImageButtonText}>Edit Image</Text>
+                  <Text style={styles.editImageButtonText}>
+                    {imageUpdating ? 'Updating…' : 'Edit Image'}
+                  </Text>
                 </TouchableOpacity>
               </>
             )}

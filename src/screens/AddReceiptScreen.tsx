@@ -202,6 +202,29 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     requestLocationPermissions();
   }, []);
 
+  useEffect(() => {
+    const editingReceipt = (route.params as { receipt?: Receipt } | undefined)?.receipt;
+    if (!editingReceipt) return;
+
+    const receiptDate =
+      editingReceipt.date instanceof Date
+        ? editingReceipt.date
+        : new Date(editingReceipt.date);
+
+    setFormData({
+      date: receiptDate,
+      vendor: editingReceipt.vendor || '',
+      amount: String(editingReceipt.amount ?? ''),
+      category: editingReceipt.category || 'Other',
+      description: editingReceipt.description || '',
+    });
+    setImageUri(editingReceipt.imageUri || '');
+    setFileType(editingReceipt.fileType || 'image');
+    if (editingReceipt.costCenter) {
+      setSelectedCostCenter(editingReceipt.costCenter);
+    }
+  }, [route.params]);
+
   // Refresh employee data when screen comes into focus (to get updated cost centers)
   useFocusEffect(
     React.useCallback(() => {
@@ -214,9 +237,16 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   // in case the params effect doesn't fire due to navigator behavior.
   const applyCroppedImage = React.useCallback(
     (croppedUri: string) => {
+      const editingReceipt = (route.params as { receipt?: Receipt } | undefined)?.receipt;
       setImageUri(croppedUri);
       setFileType('image');
       setDismissedQualityWarning(false);
+      navigation.setParams({ croppedImageUri: undefined });
+
+      if (editingReceipt?.id) {
+        return;
+      }
+
       setReadingImageToFillData(true);
       (async () => {
         try {
@@ -227,9 +257,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
           setReadingImageToFillData(false);
         }
       })();
-      navigation.setParams({ croppedImageUri: undefined });
     },
-    [navigation]
+    [navigation, route.params]
   );
 
   useFocusEffect(
@@ -1099,6 +1128,10 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       const normalizedFormVendor = (formData.vendor || (formData.category === 'Per Diem' ? 'Per Diem' : '')).toLowerCase().trim();
       
       const duplicateReceipt = sameDateReceipts.find(receipt => {
+        const editingReceipt = (route.params as { receipt?: Receipt } | undefined)?.receipt;
+        if (editingReceipt?.id && receipt.id === editingReceipt.id) {
+          return false;
+        }
         const normalizedReceiptVendor = (receipt.vendor || (receipt.category === 'Per Diem' ? 'Per Diem' : '')).toLowerCase().trim();
         const vendorMatch = normalizedReceiptVendor === normalizedFormVendor;
         const amountMatch = Math.abs(receipt.amount - Number(formData.amount)) < 0.01; // Allow for small rounding differences
@@ -1153,6 +1186,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
     }
     
     try {
+      const editingReceipt = (route.params as { receipt?: Receipt } | undefined)?.receipt;
+
       if (isSplitMode) {
         const splitGroupId = `split-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
         const validAllocations = splitAllocations.filter((a) => a.category && Number(a.amount) > 0);
@@ -1273,9 +1308,20 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
         category: formData.category,
         description: finalDescription,
         imageUri: imageUri || '',
-        fileType: fileType || 'image', // Include file type (image or pdf)
+        fileType: fileType || 'image',
         costCenter: selectedCostCenter,
       };
+
+      if (editingReceipt?.id) {
+        await DatabaseService.updateReceipt(editingReceipt.id, {
+          ...editingReceipt,
+          ...receiptData,
+          date: formData.date,
+        });
+        Alert.alert('Success', 'Receipt updated successfully');
+        navigation.goBack();
+        return;
+      }
 
       await DatabaseService.createReceipt(receiptData);
       

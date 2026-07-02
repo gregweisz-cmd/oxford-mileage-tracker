@@ -161,7 +161,7 @@ export class DatabaseService {
         entityType = 'mileageEntry';
       } else if (operation === 'updateEmployee') {
         entityType = 'employee';
-      } else if (operation === 'addReceipt') {
+      } else if (operation === 'addReceipt' || operation === 'updateReceipt') {
         entityType = 'receipt';
       } else if (operation === 'addTimeTracking') {
         entityType = 'timeTracking';
@@ -1970,6 +1970,11 @@ export class DatabaseService {
         } catch (error) {
           debugWarn('Could not clear missing image notification:', error);
         }
+      }
+
+      const updatedReceipt = await this.getReceipt(id);
+      if (updatedReceipt) {
+        await this.syncToApi('updateReceipt', updatedReceipt);
       }
     }
   }
