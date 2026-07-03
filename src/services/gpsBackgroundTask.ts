@@ -13,6 +13,7 @@ import {
   ensureGpsDiagnosticsCounters,
   type GpsTrackingDiagnosticsCounters,
 } from '../utils/gpsTrackingDiagnostics';
+import { computeGpsSegmentContribution } from '../utils/gpsSegmentFilter';
 
 export type { GpsTrackingDiagnosticsCounters };
 
@@ -57,8 +58,7 @@ const NON_DRIVING_GRACE_MS = 90 * 1000; // avoid false positives during slow par
 const STATIONARY_THRESHOLD_MS = 5 * 60 * 1000;
 const STATIONARY_ALERT_COOLDOWN_MS = 10 * 60 * 1000;
 const MIN_TRIP_DISTANCE_FOR_STATIONARY_ALERT_MILES = 0.25; // 1/4 mile
-/** Reject GPS/cell-tower spikes (common when service returns after a dead zone). */
-const MAX_IMPLAUSIBLE_SPEED_MPH = 120;
+/** Reject GPS/cell-tower spikes when accuracy is good (see gpsSegmentFilter). */
 const DUPLICATE_COORD_EPSILON = 0.00001; // ~1 meter
 /** Drop orphaned sessions so background GPS does not notify when the user is not on a trip. */
 export const MAX_PERSISTED_TRACKING_SESSION_MS = 8 * 60 * 60 * 1000;
@@ -116,12 +116,6 @@ function isAlreadyProcessedLocation(
     Math.abs(lat - lastLat) < DUPLICATE_COORD_EPSILON &&
     Math.abs(lon - lastLon) < DUPLICATE_COORD_EPSILON
   );
-}
-
-function isImplausibleSegment(distanceMiles: number, elapsedMs: number): boolean {
-  if (distanceMiles <= 0) return false;
-  const hours = Math.max(elapsedMs / 3600000, 1 / 3600);
-  return distanceMiles / hours > MAX_IMPLAUSIBLE_SPEED_MPH;
 }
 
 function recordLocationAccuracy(
@@ -235,6 +229,7 @@ async function processLocationBatch(locations: Location.LocationObject[]): Promi
   let anchorLat = batchStartLat;
   let anchorLon = batchStartLon;
   let anchorTimestamp = batchStartTimestamp;
+  let anchorAccuracy: number | null = null;
 
   if (state.isPaused === true) {
     for (const loc of sortedLocations) {
@@ -251,6 +246,10 @@ async function processLocationBatch(locations: Location.LocationObject[]): Promi
       anchorLat = lat;
       anchorLon = lon;
       anchorTimestamp = ts;
+      anchorAccuracy =
+        loc.coords.accuracy != null && Number.isFinite(loc.coords.accuracy)
+          ? loc.coords.accuracy
+          : null;
     }
 
     const latest = sortedLocations[sortedLocations.length - 1];
@@ -299,26 +298,37 @@ async function processLocationBatch(locations: Location.LocationObject[]): Promi
 
     const segmentMiles = calculateDistance(anchorLat, anchorLon, lat, lon);
     const elapsedMs = Math.max(1000, ts - anchorTimestamp);
+    const accuracy =
+      loc.coords.accuracy != null && Number.isFinite(loc.coords.accuracy)
+        ? loc.coords.accuracy
+        : null;
+    const contribution = computeGpsSegmentContribution(
+      segmentMiles,
+      elapsedMs,
+      accuracy,
+      anchorAccuracy
+    );
 
-    if (isImplausibleSegment(segmentMiles, elapsedMs)) {
+    if (contribution.droppedMiles > 0) {
       debugLog(
-        'GPS background: skipping implausible segment',
+        'GPS background: capped segment',
         segmentMiles.toFixed(2),
-        'mi'
+        'mi →',
+        contribution.countedMiles.toFixed(2),
+        'mi counted'
       );
       diagnostics.implausibleSegmentsDropped += 1;
-      diagnostics.implausibleMilesDropped += segmentMiles;
-      anchorLat = lat;
-      anchorLon = lon;
-      anchorTimestamp = ts;
-      continue;
+      diagnostics.implausibleMilesDropped += contribution.droppedMiles;
     }
 
-    diagnostics.locationPointsCounted += 1;
-    state.totalDistance += segmentMiles;
+    if (contribution.countedMiles > 0) {
+      diagnostics.locationPointsCounted += 1;
+      state.totalDistance += contribution.countedMiles;
+    }
     anchorLat = lat;
     anchorLon = lon;
     anchorTimestamp = ts;
+    anchorAccuracy = accuracy;
   }
 
   state.lastLocation = { latitude: anchorLat, longitude: anchorLon };

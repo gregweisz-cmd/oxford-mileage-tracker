@@ -96,7 +96,7 @@ const getDiagnosticInsights = (
   const insights: string[] = [];
   if (diagnostics.implausibleMilesDropped >= 1) {
     insights.push(
-      `${diagnostics.implausibleSegmentsDropped} GPS segment(s) were dropped as implausible (~${diagnostics.implausibleMilesDropped} mi not counted).`
+      `${diagnostics.implausibleSegmentsDropped} GPS segment(s) had miles capped or excluded (~${diagnostics.implausibleMilesDropped} mi not counted).`
     );
   }
   if (diagnostics.maxGapSeconds >= 120) {
@@ -311,7 +311,7 @@ export const GpsTripInvestigationTab: React.FC<GpsTripInvestigationTabProps> = (
           </Typography>
           {diagnostics.implausibleSegmentsDropped > 0 && (
             <Typography variant="body2" color="warning.main">
-              Implausible segments dropped: {diagnostics.implausibleSegmentsDropped} (~
+              Miles capped/excluded: {diagnostics.implausibleSegmentsDropped} (~
               {diagnostics.implausibleMilesDropped} mi excluded)
             </Typography>
           )}

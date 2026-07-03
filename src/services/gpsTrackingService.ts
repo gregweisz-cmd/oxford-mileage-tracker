@@ -237,10 +237,10 @@ export class GpsTrackingService {
 
       // Use background-capable location updates (works when app is in background or screen is off)
       const taskOptions: Location.LocationTaskOptions = {
-        accuracy: Location.Accuracy.Balanced,
-        timeInterval: 15000,
+        accuracy: Location.Accuracy.High,
+        timeInterval: 10000,
         // Keep periodic updates flowing even while stopped so idle-state logic can run reliably.
-        distanceInterval: 0,
+        distanceInterval: 25,
         showsBackgroundLocationIndicator: true,
       };
 
@@ -458,9 +458,9 @@ export class GpsTrackingService {
       const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
       if (!isRunning) {
         const taskOptions: Location.LocationTaskOptions = {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 15000,
-          distanceInterval: 0,
+          accuracy: Location.Accuracy.High,
+          timeInterval: 10000,
+          distanceInterval: 25,
           showsBackgroundLocationIndicator: true,
         };
         if (Platform.OS === 'android') {
