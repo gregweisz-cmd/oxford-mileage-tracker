@@ -18,7 +18,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
-import { normalizeReceiptImageUri } from '../utils/receiptImageNormalize';
+import { normalizeReceiptImageUri, resolveReceiptImageUri } from '../utils/receiptImageNormalize';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
@@ -87,6 +87,8 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
   });
   
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imagePreviewUri, setImagePreviewUri] = useState<string | null>(null);
+  const [imagePreviewFailed, setImagePreviewFailed] = useState(false);
   const [fileType, setFileType] = useState<'image' | 'pdf' | null>(null); // Track file type
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState<Date>(new Date());
@@ -231,11 +233,47 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
       description: editingReceipt.description || '',
     });
     setImageUri(editingReceipt.imageUri || '');
+    setImagePreviewFailed(false);
     setFileType(editingReceipt.fileType || 'image');
     if (editingReceipt.costCenter) {
       setSelectedCostCenter(editingReceipt.costCenter);
     }
   }, [route.params]);
+
+  useEffect(() => {
+    if (!imageUri) {
+      setImagePreviewUri(null);
+      setImagePreviewFailed(false);
+      return;
+    }
+
+    let cancelled = false;
+    const resolved = resolveReceiptImageUri(imageUri);
+    const isLocal =
+      resolved.startsWith('file://') ||
+      resolved.startsWith('content://') ||
+      resolved.startsWith('ph://');
+
+    void (async () => {
+      try {
+        const previewUri = isLocal ? await normalizeReceiptImageUri(resolved) : resolved;
+        if (!cancelled) {
+          setImagePreviewUri(previewUri);
+          setImagePreviewFailed(false);
+        }
+      } catch (error) {
+        console.warn('Could not prepare receipt image preview:', error);
+        if (!cancelled) {
+          setImagePreviewUri(resolved);
+          setImagePreviewFailed(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUri]);
 
   // Refresh employee data when screen comes into focus (to get updated cost centers)
   useFocusEffect(
@@ -1424,13 +1462,22 @@ export default function AddReceiptScreen({ navigation }: AddReceiptScreenProps) 
                   <MaterialIcons name="picture-as-pdf" size={64} color="#F44336" />
                   <Text style={{ marginTop: 8, color: colors.textSecondary, fontSize: 14 }}>PDF Receipt</Text>
                 </View>
+              ) : imagePreviewFailed ? (
+                <View style={[styles.receiptImage, dynamicStyles.receiptImage, { justifyContent: 'center', alignItems: 'center', padding: 16 }]}>
+                  <MaterialIcons name="broken-image" size={48} color={colors.textSecondary} />
+                  <Text style={{ marginTop: 8, color: colors.textSecondary, fontSize: 14, textAlign: 'center' }}>
+                    {isEditMode
+                      ? 'Preview unavailable. Your saved receipt image is still on file.'
+                      : 'Preview unavailable. Try choosing the image again.'}
+                  </Text>
+                </View>
               ) : (
                 <Image 
-                  source={{ uri: imageUri || '' }} 
+                  source={{ uri: imagePreviewUri || resolveReceiptImageUri(imageUri) }} 
                   style={[styles.receiptImage, dynamicStyles.receiptImage]}
                   onError={(error) => {
-                    console.error('❌ Error loading receipt image:', error.nativeEvent.error);
-                    Alert.alert('Image Error', 'Failed to load receipt image. Please try selecting a new image.');
+                    console.error('❌ Error loading receipt image preview:', error.nativeEvent.error);
+                    setImagePreviewFailed(true);
                   }}
                 />
               )}

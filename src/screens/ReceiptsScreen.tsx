@@ -17,12 +17,11 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { normalizeReceiptImageUri } from '../utils/receiptImageNormalize';
+import { normalizeReceiptImageUri, resolveReceiptImageUri } from '../utils/receiptImageNormalize';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { DatabaseService } from '../services/database';
 import { PdfService } from '../services/pdfService';
 import { Receipt, Employee } from '../types';
-import { API_BASE_URL } from '../config/api';
 import * as ImagePicker from 'expo-image-picker';
 import UnifiedHeader from '../components/UnifiedHeader';
 import { ApiSyncService } from '../services/apiSyncService';
@@ -313,42 +312,7 @@ export default function ReceiptsScreen({ navigation, route }: ReceiptsScreenProp
     );
   };
 
-  // Helper function to resolve image URI (handles both local files and backend URLs)
-  const resolveImageUri = (imageUri: string | undefined | null): string => {
-    if (!imageUri || imageUri.trim() === '') return '';
-    
-    // If it's already a full URL (http/https), return as-is
-    if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
-      return imageUri;
-    }
-    
-    // If it's a data URI, return as-is
-    if (imageUri.startsWith('data:')) {
-      return imageUri;
-    }
-    
-    // If it's a file:// URI, return as-is
-    if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')) {
-      return imageUri;
-    }
-    
-    // Backend serves images from /uploads/ directory (not /api/uploads/)
-    // Remove /api suffix from base URL since uploads are served at root level
-    const baseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
-    
-    // Handle different URI formats:
-    // - "/uploads/filename.jpg" -> use as-is with baseUrl
-    // - "uploads/filename.jpg" -> add leading slash
-    // - "filename.jpg" -> prepend /uploads/
-    if (imageUri.startsWith('/uploads/')) {
-      return `${baseUrl}${imageUri}`;
-    } else if (imageUri.startsWith('uploads/')) {
-      return `${baseUrl}/${imageUri}`;
-    } else {
-      const filename = imageUri.startsWith('/') ? imageUri.substring(1) : imageUri;
-      return `${baseUrl}/uploads/${filename}`;
-    }
-  };
+  const resolveImageUri = resolveReceiptImageUri;
   
   // State for image loading errors
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());

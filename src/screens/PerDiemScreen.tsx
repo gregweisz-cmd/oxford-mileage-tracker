@@ -25,47 +25,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { PerDiemRulesService } from '../services/perDiemRulesService';
 import { PerDiemAiService } from '../services/perDiemAiService';
 import { ApiSyncService } from '../services/apiSyncService';
-import { API_BASE_URL } from '../config/api';
+import { resolveReceiptImageUri } from '../utils/receiptImageNormalize';
 import { getSyncMonthScope, setSyncMonthScope } from '../services/syncScopeService';
 import { costCenterApiService } from '../services/costCenterApiService';
 import { KeyboardAwareScrollView, ScrollToOnFocusView } from '../components/KeyboardAwareScrollView';
 import { dismissKeyboardForSelection } from '../utils/formInteraction';
-
-// Helper function to resolve image URI (handles both local files and backend URLs)
-function resolveImageUri(imageUri: string | undefined | null): string {
-  if (!imageUri || imageUri.trim() === '') return '';
-  
-  // If it's already a full URL (http/https), return as-is
-  if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
-    return imageUri;
-  }
-  
-  // If it's a data URI, return as-is
-  if (imageUri.startsWith('data:')) {
-    return imageUri;
-  }
-  
-  // If it's a file:// or other local URI, return as-is
-  if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')) {
-    return imageUri;
-  }
-  
-  // Backend serves images from /uploads/ directory (not /api/uploads/)
-  const baseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
-  
-  // Handle different URI formats:
-  // - "/uploads/filename.jpg" -> use as-is with baseUrl
-  // - "uploads/filename.jpg" -> add leading slash  
-  // - "filename.jpg" -> prepend /uploads/
-  if (imageUri.startsWith('/uploads/')) {
-    return `${baseUrl}${imageUri}`;
-  } else if (imageUri.startsWith('uploads/')) {
-    return `${baseUrl}/${imageUri}`;
-  } else {
-    const filename = imageUri.startsWith('/') ? imageUri.substring(1) : imageUri;
-    return `${baseUrl}/uploads/${filename}`;
-  }
-}
 
 interface PerDiemScreenProps {
   navigation: any;
@@ -939,7 +903,7 @@ export default function PerDiemScreen({ navigation, route }: PerDiemScreenProps)
                   <View style={styles.imageRow}>
                     {perDiemEntry.imageUri ? (
                       <View style={styles.imageContainer}>
-                        <Image source={{ uri: resolveImageUri(perDiemEntry.imageUri) }} style={styles.image} />
+                        <Image source={{ uri: resolveReceiptImageUri(perDiemEntry.imageUri) }} style={styles.image} />
                         <TouchableOpacity
                           style={styles.deleteImageButton}
                           onPress={() => handleDeletePerDiem(dateKey)}
